@@ -31,24 +31,14 @@ impl Block {
     }
 
     pub fn mine(&mut self) -> u64 {
-        let target = "0".repeat(self.header.get_difficulty() as usize);
-        
-        // Keep incrementing nonce until we find a hash with the required number of leading zeros
         loop {
-            let hash = self.get_hash();
-            
-            // Check if the hash meets the difficulty target
-            if hash.starts_with(&target) {
-                println!("Block mined with nonce: {}, hash: {}", self.header.get_nonce(), hash);
+            if self.is_valid() {
+                println!("Block mined with nonce: {}, hash: {}", self.header.get_nonce(), self.get_hash());
                 return self.header.get_nonce();
             }
             
+            //TODO: Confirm if this is the correct way to increment the nonce
             self.header.set_nonce(self.header.get_nonce() + 1);
-            
-            // Display mining progress every 10000 attempts
-            if self.header.get_nonce() % 10000 == 0 {
-                println!("Mining... nonce: {}, hash: {}", self.header.get_nonce(), hash);
-            }
         }
     }
 

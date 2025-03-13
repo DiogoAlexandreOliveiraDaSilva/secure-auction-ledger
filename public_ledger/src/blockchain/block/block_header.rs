@@ -1,7 +1,5 @@
 //!Block Header
 
-
-
 pub struct BlockHeader {
     parent_hash: String,
     nonce: u64,
@@ -30,10 +28,10 @@ impl BlockHeader {
         self.nonce = nonce;
     }
 
-    pub fn new(parent_hash: String, prev_nonce: u64, difficulty:u64) -> BlockHeader {
+    pub fn new(parent_hash: String, difficulty:u64) -> BlockHeader {
         BlockHeader {
             parent_hash,
-            nonce: prev_nonce+1,
+            nonce: 0,
             difficulty,
             timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
         }

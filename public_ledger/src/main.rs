@@ -7,7 +7,6 @@ fn main() {
 
     let mut block_header = blockchain::block::block_header::BlockHeader::new(
         "0000000000000000000000000000000000000000000000000000000000000000".to_string(), 
-        0,
         difficulty
     );
 
@@ -19,7 +18,6 @@ fn main() {
 
     block_header = blockchain::block::block_header::BlockHeader::new(
         genesis_block.get_hash(),
-        genesis_nonce,
         difficulty
     );
 
