@@ -1,35 +1,28 @@
-mod blockchain;
-#[cfg(test)]
-mod tests;
+pub mod blockchain;
+
+use crate::blockchain::chain::Chain;
+use crate::blockchain::block::block::Block;
 
 fn main() {
-    let difficulty = 2;
+    let blockchain = Chain::new();
+    println!("Blockchain initialized with {} blocks", blockchain.blocks.len());
+}
 
-    let mut block_header = blockchain::block::block_header::BlockHeader::new(
-        "0000000000000000000000000000000000000000000000000000000000000000".to_string(), 
-        difficulty
-    );
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let block_body = blockchain::block::block_body::BlockBody::new("Genesis block".to_string());
-    let mut genesis_block = blockchain::block::Block::new(block_header, block_body);
+    #[test]
+    fn test_blockchain_initialization() {
+        let blockchain = Chain::new();
+        assert_eq!(blockchain.blocks.len(), 1, "Blockchain should start with a Genesis block");
+    }
 
-    println!("Mining genesis block...");
-    let genesis_nonce = genesis_block.mine();
-
-    block_header = blockchain::block::block_header::BlockHeader::new(
-        genesis_block.get_hash(),
-        difficulty
-    );
-
-    let block_body = blockchain::block::block_body::BlockBody::new("Hello, world!".to_string());
-    let mut block = blockchain::block::Block::new(block_header, block_body);
-
-    println!("Mining block...");
-    let nonce = block.mine();
-
-    if block.is_valid() {
-        println!("Block is valid!");
-    } else {
-        println!("Block is invalid!");
+    #[test]
+    fn test_add_block() {
+        let mut blockchain = Chain::new();
+        let new_block = Block::genesis();
+        blockchain.add_block(new_block);
+        assert_eq!(blockchain.blocks.len(), 2, "Blockchain should have 2 blocks after adding one");
     }
 }

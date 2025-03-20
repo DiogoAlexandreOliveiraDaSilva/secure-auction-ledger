@@ -1,1 +1,3 @@
-pub(crate) mod block;
+pub mod block;
+pub mod transaction;
+pub mod chain; 
