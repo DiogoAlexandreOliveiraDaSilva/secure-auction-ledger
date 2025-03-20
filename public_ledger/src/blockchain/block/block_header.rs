@@ -1,9 +1,14 @@
 //!Block Header
 
+// A block header contains metadata about the block
 pub struct BlockHeader {
+    // parent_hash is the hash of the previous block in the chain
     parent_hash: String,
+    // nonce is a number that miners increment in order to find a valid hash
     nonce: u64,
+    // difficulty is the number of zeros that the hash of the block should start with for it to be valid
     difficulty: u64,
+    // timestamp is the time at which the block was created
     timestamp: u64,
 }
 

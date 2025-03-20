@@ -3,13 +3,17 @@ pub(crate) mod block_header;
 pub(crate) mod block_body;
 use ring::digest;
 
+// A block is a structure that contains a header and a body
+// The header contains metadata about the block
+// The body contains the transactions
 pub(crate) struct Block {
     header: block_header::BlockHeader,
     body: block_body::BlockBody
 }
 
-
 impl Block {
+
+    // Creates block hash based on it's information
     pub fn get_hash(&self) -> String {
         let mut hash = digest::Context::new(&digest::SHA512);
         hash.update(self.header.get_parent_hash().as_bytes());
@@ -26,10 +30,12 @@ impl Block {
             .collect()
     }
 
+    // Returns the block's nonce
     pub fn get_nonce(&self) -> u64 {
         self.header.get_nonce()
     }
 
+    // Increments the block's nonce until the block is valid (hash starts with zeros corresponding to the difficulty)
     pub fn mine(&mut self) -> u64 {
         loop {
             if self.is_valid() {
@@ -37,11 +43,11 @@ impl Block {
                 return self.header.get_nonce();
             }
             
-            //TODO: Confirm if this is the correct way to increment the nonce
             self.header.set_nonce(self.header.get_nonce() + 1);
         }
     }
 
+    // Checks if the block is valid (hash starts with zeros corresponding to the difficulty)
     pub fn is_valid(&self) -> bool {
         let hash = self.get_hash();
         let target = "0".repeat(self.header.get_difficulty() as usize);
