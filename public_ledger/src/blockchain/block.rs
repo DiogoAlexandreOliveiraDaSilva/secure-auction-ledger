@@ -48,7 +48,21 @@ impl Block {
         hash.starts_with(&target)
     }
 
-    pub fn new(header: block_header::BlockHeader, body: block_body::BlockBody) -> Block {
+    pub fn genesis() -> Self {
+        let genesis_header = BlockHeader::new(
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            0,
+        );
+
+        let genesis_body = BlockBody::new(vec![]);  // ✅ No transactions in the Genesis block
+
+        Block {
+            header: genesis_header,
+            body: genesis_body,
+        }
+    }
+
+    pub fn new(header: BlockHeader, body: BlockBody) -> Block {
         Block {
             header,
             body
