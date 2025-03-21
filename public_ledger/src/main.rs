@@ -1,3 +1,5 @@
+use kademlia::init;
+
 // Tests
 #[cfg(test)]
 mod tests;
@@ -7,4 +9,5 @@ mod kademlia;
 
 
 fn main() {
+    init(8080);
 }
