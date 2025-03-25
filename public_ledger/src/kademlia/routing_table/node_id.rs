@@ -26,7 +26,7 @@ pub fn k_index(xor_distance: &[u8; 20], bit_index: usize) -> u8 {
     (xor_distance[byte_index] >> (7 - bit_in_byte)) & 1
 }
 
-// Calculates the k-bucket index of a node id
+// Calculates the k-bucket index of a node id, starts at 0
 pub fn find_k_bucket_index(xor_distance: &[u8; 20]) -> usize {
     for bit_index in 0..160 {
         // Check if the bit at `bit_index` is 1 (use k_index to check)

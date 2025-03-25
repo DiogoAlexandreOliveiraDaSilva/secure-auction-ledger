@@ -51,4 +51,8 @@ impl RoutingTable {
         }
         size
     }
+
+    pub fn get_k_bucket_map(&self) -> &HashMap<u8, k_bucket::K_Bucket> {
+        &self.k_bucket_map
+    }
 }
