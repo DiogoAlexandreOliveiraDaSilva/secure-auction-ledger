@@ -6,7 +6,7 @@ use super::{node::Node, params::MAX_BUCKET_SIZE};
 pub(crate) struct K_Bucket{
     // k is the maximum number of nodes that a bucket can hold
     k: usize,
-    // nodes is a vector that holds the nodes in the bucket
+    // nodes is a vector queue that holds the nodes in the bucket, this structure holds recent used nodes at the front of the queue
     nodes: VecDeque<Node>,
 }
 
@@ -46,6 +46,11 @@ impl K_Bucket {
     // Checks if the bucket is full
     pub fn is_full(&self) -> bool {
         self.nodes.len() == self.k
+    }
+
+    // Get the nodes in the bucket
+    pub fn get_nodes(&self) -> &VecDeque<Node> {
+        &self.nodes
     }
     
 }

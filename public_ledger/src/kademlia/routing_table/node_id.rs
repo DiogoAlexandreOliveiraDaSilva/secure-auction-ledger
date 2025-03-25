@@ -4,7 +4,7 @@ use rand::Rng;
 
 // Generates a random node id
 pub fn generate_node_id() -> [u8; 20] {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut id = [0u8; 20];
     rng.fill(&mut id);
     id

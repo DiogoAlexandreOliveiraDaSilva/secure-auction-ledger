@@ -15,15 +15,23 @@ pub(crate) struct Node {
     // Constructor
     pub fn new(ip: String, port: u16) -> Node {
       Node {
-        id: generate_node_id(),
-        ip,
-        port,
+      id: generate_node_id(),
+      ip,
+      port,
       }
     }
 
-    // Get the ID of the Node
+    pub fn with_id(id: [u8; 20], ip: String, port: u16) -> Node {
+      Node {
+      id,
+      ip,
+      port,
+      }
+    }
+
+    // Get the Clone of the ID of the Node
     pub fn get_id(&self) -> &[u8; 20] {
-        &self.id
+      &self.id
     }
 
   }
