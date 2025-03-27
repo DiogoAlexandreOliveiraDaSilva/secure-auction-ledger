@@ -2,8 +2,8 @@
 
 // A block header contains metadata about the block
 pub struct BlockHeader {
-    // parent_hash is the hash of the previous block in the chain
-    parent_hash: String,
+    // prev_hash is the hash of the previous block in the chain
+    prev_hash: String,
     // nonce is a number that miners increment in order to find a valid hash
     nonce: u64,
     // difficulty is the number of zeros that the hash of the block should start with for it to be valid
@@ -14,7 +14,7 @@ pub struct BlockHeader {
 
 impl BlockHeader {
     pub fn get_parent_hash(&self) -> String {
-        self.parent_hash.clone()
+        self.prev_hash.clone()
     }
 
     pub fn get_timestamp(&self) -> u64 {
@@ -33,9 +33,9 @@ impl BlockHeader {
         self.nonce = nonce;
     }
 
-    pub fn new(parent_hash: String, difficulty:u64) -> BlockHeader {
+    pub fn new(prev_hash: String, difficulty:u64) -> BlockHeader {
         BlockHeader {
-            parent_hash,
+            prev_hash,
             nonce: 0,
             difficulty,
             timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
