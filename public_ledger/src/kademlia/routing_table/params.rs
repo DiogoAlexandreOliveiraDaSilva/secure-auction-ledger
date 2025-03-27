@@ -1,0 +1,1 @@
+pub const MAX_BUCKET_SIZE: usize = 4;
