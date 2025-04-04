@@ -1,0 +1,61 @@
+syntax = "proto3";
+package communication;
+
+
+service Kademlia {
+    // Store a value in the Kademlia network
+    rpc Ping(PingRequest) returns (PingResponse);
+    // Store a value in the Kademlia network
+    rpc Store(StoreRequest) returns (StoreResponse);
+    // Find k-nodes closest to a given key
+    rpc FindNode(FindNodeRequest) returns (FindNodeResponse);
+    // Retrieve a value from the Kademlia network
+    rpc FindValue(FindValueRequest) returns (FindValueResponse);
+}
+
+message PingRequest {
+}
+
+message PingResponse {
+    // Acknowledgment of the ping
+    string message = 1;
+}
+
+message StoreRequest {
+    // The key to store
+    string key = 1;
+    // The value to store
+    bytes value = 2;
+}
+
+message StoreResponse {
+    // Acknowledgment of the store operation
+    string message = 1;
+}
+
+message FindNodeRequest {
+    // The key to find
+    string key = 1;
+}
+
+message FindNodeResponse {
+    repeated Node nodes = 1; // List of nodes closest to the key
+}
+
+message FindValueRequest {
+    // The key to find
+    string key = 1;
+}
+
+// If it has value, it means the value is found and returned, if not returns the nodes closest to the key
+message FindValueResponse {
+    bytes value = 1; // If value is found
+    repeated Node nodes = 2; // Otherwise, return a list of nodes
+}
+
+// Node structure
+message Node {
+    string id = 1;
+    string ip = 2;
+    uint32 port = 3;
+}
