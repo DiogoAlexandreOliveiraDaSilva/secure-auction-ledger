@@ -43,9 +43,8 @@ impl Kademlia for MyKademliaService {
     }
 }
    
-// This function starts the Kademlia server and corresponding routing services
+// This function starts the Kademlia server
 pub async fn start_kademlia_server(addr: String, port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let routing_table = routing_table::RoutingTable::new(addr.clone(), port);
     let kademlia_service = MyKademliaService::default();  
     let kademlia_server = KademliaServer::new(kademlia_service);
 
@@ -59,31 +58,3 @@ pub async fn start_kademlia_server(addr: String, port: u16) -> Result<(), Box<dy
 
     Ok(())
 }
-
-// // Connect to bootstrap node
-// pub async fn connect_to_bootstrap_node(addr: String, port: u16) -> Result<(), Box<dyn std::error::Error>> {
-//     let channel = tonic::transport::Channel::from_static(&format!("http://[{}]:{}", addr, port))
-//         .connect()
-//         .await?;
-
-//     let mut client = KademliaClient::new(channel);
-
-//     // Create the request object
-//     let request = tonic::Request::new(PingRequest {});
-
-//     let response = client.ping(request).await?;
-//     println!("Response: {:?}", response.into_inner());
-
-//     let inner_response = response.into_inner();
-//     match inner_response.message.as_str() {
-//         "Pong" => {
-//             println!("Connected to bootstrap node at {}:{}", addr, port);
-//             // Add Node to routing table
-//             let node = routing_table::Node::new(addr.clone(), port);
-//         },
-//         _ => println!("Failed to connect to bootstrap node"),
-//     }
-    
-
-//     Ok(())
-// }
