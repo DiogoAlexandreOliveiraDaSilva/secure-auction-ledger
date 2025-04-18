@@ -24,8 +24,15 @@ pub struct MyKademliaService {
 #[tonic::async_trait]
 impl Kademlia for MyKademliaService {
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PingResponse>, Status> {
+        // Add node to routing table
+        let id: [u8; 20] = request.get_ref().id.clone().try_into().map_err(|_| Status::invalid_argument("Invalid ID length"))?;
+        let node = routing_table::node::Node::with_id(id, request.remote_addr().unwrap().ip().to_string(), request.remote_addr().unwrap().port());
+        let mut routing_table = self.routing_table.write().unwrap();
+        routing_table.add_node(node);
+
+        // Create a response
         let reply = PingResponse {
-            id: format!("NodeID"),
+            id: routing_table.get_curr_node().get_id().to_vec(),
             message: format!("Pong"),
         };
         Ok(Response::new(reply))

@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Create the request object
             let request = tonic::Request::new(PingRequest {
-                id: "NodeID".to_string()
+                id: vec![0; 20], // Example ID, replace with actual ID
             });
 
             let response = client.ping(request).await?;
