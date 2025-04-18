@@ -33,7 +33,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut client = KademliaClient::new(channel);
 
             // Create the request object
-            let request = tonic::Request::new(PingRequest {});
+            let request = tonic::Request::new(PingRequest {
+                id: "NodeID".to_string()
+            });
 
             let response = client.ping(request).await?;
             println!("Response: {:?}", response.into_inner());

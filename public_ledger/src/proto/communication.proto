@@ -14,11 +14,15 @@ service Kademlia {
 }
 
 message PingRequest {
+    // Node ID of the sender
+    string id = 1;
 }
 
 message PingResponse {
+    // Node ID of the receiver
+    string id = 1;
     // Acknowledgment of the ping
-    string message = 1;
+    string message = 2;
 }
 
 message StoreRequest {

@@ -1,20 +1,31 @@
 pub(crate) mod routing_table;
+
+// ARC and RwLock are used to allow multiple threads to access the routing table concurrently
+use std::sync::{Arc, RwLock};
+
+
+// Tonic GRPC server
 use tonic::{transport::Server,Request,Response,Status};
 
+// Protobuf generated code
 pub mod communication{
     tonic::include_proto!("communication");
 }
-
 use communication::kademlia_server::{Kademlia, KademliaServer};
 use communication::{PingRequest, PingResponse, FindNodeRequest, FindNodeResponse, StoreRequest, StoreResponse,FindValueRequest ,FindValueResponse, kademlia_client::KademliaClient};
 
-#[derive(Default)]
-pub struct MyKademliaService;
+// This is the main Kademlia service that will handle all the requests
+pub struct MyKademliaService {
+    pub routing_table: Arc<RwLock<routing_table::RoutingTable>>,
+}
 
+
+// This is the remote procedure call (RPC) implementation of the Kademlia service
 #[tonic::async_trait]
 impl Kademlia for MyKademliaService {
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PingResponse>, Status> {
         let reply = PingResponse {
+            id: format!("NodeID"),
             message: format!("Pong"),
         };
         Ok(Response::new(reply))
@@ -45,7 +56,9 @@ impl Kademlia for MyKademliaService {
    
 // This function starts the Kademlia server, this will process all calls made to it and update routing table
 pub async fn start_kademlia_server(addr: String, port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let kademlia_service = MyKademliaService::default();  
+    let kademlia_service = MyKademliaService {
+        routing_table: Arc::new(RwLock::new(routing_table::RoutingTable::new(addr.clone(), port))),
+    };
     let kademlia_server = KademliaServer::new(kademlia_service);
 
     let socket_addr = format!("[{}]:{}", addr, port).parse()?; 
