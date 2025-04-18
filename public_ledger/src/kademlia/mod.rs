@@ -43,12 +43,12 @@ impl Kademlia for MyKademliaService {
     }
 }
    
-// This function starts the Kademlia server
+// This function starts the Kademlia server, this will process all calls made to it and update routing table
 pub async fn start_kademlia_server(addr: String, port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let kademlia_service = MyKademliaService::default();  
     let kademlia_server = KademliaServer::new(kademlia_service);
 
-    let socket_addr = format!("[{}]:{}", addr, port).parse()?; // This fixes AddrParseError
+    let socket_addr = format!("[{}]:{}", addr, port).parse()?; 
 
     println!("Server listening on {}:{}", addr, port);
     Server::builder()
