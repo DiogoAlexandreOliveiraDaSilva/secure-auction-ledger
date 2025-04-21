@@ -1,4 +1,4 @@
-use kademlia::start_kademlia_server;
+use kademlia::{routing_table, start_kademlia_server};
 use tonic::transport::Server;
 use kademlia::{communication::kademlia_server, MyKademliaService, communication::kademlia_client::KademliaClient};
 use kademlia::communication::{FindValueRequest, PingRequest}; // Needed for proper request building
