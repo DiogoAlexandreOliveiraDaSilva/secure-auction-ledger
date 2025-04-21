@@ -1,6 +1,7 @@
 // Node of Kademlia DHT Tree
 use super::node_id::generate_node_id;
 
+#[derive(Clone)]
 pub(crate) struct Node {
   
     // Unique Identifier of the Node / TODO: Change to Key Struct
@@ -32,6 +33,16 @@ pub(crate) struct Node {
     // Get the Clone of the ID of the Node
     pub fn get_id(&self) -> &[u8; 20] {
       &self.id
+    }
+
+    // Get the IP Address of the Node
+    pub fn get_ip(&self) -> String {
+      self.ip.clone()
+    }
+
+    // Get the PORT of the Node
+    pub fn get_port(&self) -> u16 {
+      self.port
     }
 
   }

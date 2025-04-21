@@ -26,10 +26,12 @@ message PingResponse {
 }
 
 message StoreRequest {
+    // The ID of the node making the request
+    bytes id = 1;
     // The key to store
-    string key = 1;
+    bytes key = 2;
     // The value to store
-    bytes value = 2;
+    bytes value = 3;
 }
 
 message StoreResponse {
@@ -38,8 +40,10 @@ message StoreResponse {
 }
 
 message FindNodeRequest {
+    // The ID of the node making the request
+    bytes id = 1;
     // The key to find
-    string key = 1;
+    bytes key = 2;
 }
 
 message FindNodeResponse {
@@ -47,8 +51,10 @@ message FindNodeResponse {
 }
 
 message FindValueRequest {
+    // The ID of the node making the request
+    bytes id = 1;
     // The key to find
-    string key = 1;
+    bytes key = 2;
 }
 
 // If it has value, it means the value is found and returned, if not returns the nodes closest to the key
@@ -59,7 +65,7 @@ message FindValueResponse {
 
 // Node structure
 message Node {
-    string id = 1;
+    bytes id = 1;
     string ip = 2;
     uint32 port = 3;
 }
