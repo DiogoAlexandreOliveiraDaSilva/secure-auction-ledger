@@ -1,14 +1,18 @@
 // main.rs
 use eframe::{egui, App, Frame};
+use std::sync::{Arc, RwLock};
 
 mod screens;
 
 use screens::{AppState, CreateNetworkScreen, InitialScreen, Screen};
 
+use crate::routing_table;
+
 pub struct AuctionApp {
     pub(crate) state: AppState,
     initial_screen: InitialScreen,
     create_network_screen: CreateNetworkScreen,
+    routing_table: Option<Arc<RwLock<routing_table::RoutingTable>>>,
 }
 
 impl AuctionApp {
@@ -17,6 +21,7 @@ impl AuctionApp {
             state: AppState::Initial,
             initial_screen: InitialScreen::default(),
             create_network_screen: CreateNetworkScreen::default(),
+            routing_table: None,
         }
     }
 }
