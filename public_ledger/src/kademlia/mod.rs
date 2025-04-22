@@ -153,7 +153,6 @@ pub async fn start_kademlia_server(
 
     let socket_addr = format!("[{}]:{}", addr, port).parse()?; 
 
-    println!("Server listening on {}:{}", addr, port);
     Server::builder()
         .add_service(kademlia_server)
         .serve(socket_addr)
