@@ -1,4 +1,4 @@
-use kademlia::start_kademlia_server;
+use kademlia::{routing_table, start_kademlia_server};
 use tonic::transport::Server;
 use kademlia::{communication::kademlia_server, MyKademliaService, communication::kademlia_client::KademliaClient};
 use kademlia::communication::{FindValueRequest, PingRequest}; // Needed for proper request building
@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Create the request object
             let request = tonic::Request::new(PingRequest {
-                id: "NodeID".to_string()
+                id: vec![0; 20], // Example ID, replace with actual ID
             });
 
             let response = client.ping(request).await?;
