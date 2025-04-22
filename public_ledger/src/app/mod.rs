@@ -49,6 +49,7 @@ impl App for AuctionApp {
                                                     }
                                                 }
                                             });
+                                            println!("Kademlia server started on {}:{}", addr, port);
                                             self.state = AppState::Selection;
                                         }
                                         else {

@@ -19,6 +19,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(eframe::run_native(
         "Auction App",
         options,
-        Box::new(|_cc| Box::new(AuctionApp::new())),
+        Box::new(|_cc| Ok(Box::new(AuctionApp::new()))),
     )?)
 }
