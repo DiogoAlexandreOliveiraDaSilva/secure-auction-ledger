@@ -13,11 +13,12 @@ mod blockchain;
 mod kademlia;
 mod app;
 
-fn main() -> Result<(), eframe::Error> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = eframe::NativeOptions::default();
-    eframe::run_native(
+    Ok(eframe::run_native(
         "Auction App",
         options,
         Box::new(|_cc| Box::new(AuctionApp::new())),
-    )
+    )?)
 }

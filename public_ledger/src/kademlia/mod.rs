@@ -141,8 +141,11 @@ impl Kademlia for MyKademliaService {
 }
 
 // This function starts the Kademlia server, this will process all calls made to it and update routing table
-pub async fn start_kademlia_server(addr: String, port: u16) -> Result<Arc<RwLock<routing_table::RoutingTable>>, Box<dyn std::error::Error>> {
-    let routing_table = Arc::new(RwLock::new(routing_table::RoutingTable::new(addr.clone(), port)));
+pub async fn start_kademlia_server(
+    routing_table: Arc<RwLock<routing_table::RoutingTable>>,
+    addr: String,
+    port: u16
+) -> Result<(), Box<dyn std::error::Error>> {
     let kademlia_service = MyKademliaService {
         routing_table: routing_table.clone(),
     };
@@ -156,5 +159,5 @@ pub async fn start_kademlia_server(addr: String, port: u16) -> Result<Arc<RwLock
         .serve(socket_addr)
         .await?;
 
-    Ok(routing_table)
+    Ok(())
 }
