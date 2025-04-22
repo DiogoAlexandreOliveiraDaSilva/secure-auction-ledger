@@ -13,18 +13,30 @@ pub enum SelectionScreenEvent {
 
 impl SelectionScreen {
     pub fn ui(&mut self, ui: &mut Ui) -> Option<SelectionScreenEvent> {
-        ui.heading("Distributed Auction System");
-        ui.label("Now you can either join an existing auction house or create a new one.");
         let mut event = None;
-        ui.horizontal(|ui| {
-            if ui.button("Join").clicked() {
-                event = Some(SelectionScreenEvent::Join);
-            }
-            if ui.button("Create").clicked() {
-                event = Some(SelectionScreenEvent::Create);
-            }
+
+        ui.vertical_centered(|ui| {
+            ui.add_space(20.0);
+            ui.heading("Distributed Auction System");
+
+            ui.add_space(10.0);
+            ui.label("You can now either join an existing auction house or create a new one.");
+
+            ui.add_space(20.0);
+            
+            ui.horizontal(|ui| {
+                if ui.button("Join").clicked() {
+                    event = Some(SelectionScreenEvent::Join);
+                }
+                if ui.button("Create").clicked() {
+                    event = Some(SelectionScreenEvent::Create);
+                }
+            });
+
+            ui.add_space(10.0);
+            ui.label("Please select an option to proceed.");
         });
-        ui.label("Please select an option.");
+
         event
     }
 }
