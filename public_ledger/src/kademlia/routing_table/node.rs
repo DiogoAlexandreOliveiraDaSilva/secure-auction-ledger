@@ -1,3 +1,5 @@
+use crate::kademlia::communication;
+
 // Node of Kademlia DHT Tree
 use super::node_id::generate_node_id;
 
@@ -43,6 +45,22 @@ pub(crate) struct Node {
     // Get the PORT of the Node
     pub fn get_port(&self) -> u16 {
       self.port
+    }
+
+    pub fn to_proto(&self) -> communication::Node {
+      communication::Node {
+          id: self.id.to_vec(),
+          ip: self.ip.clone(),
+          port: self.port as u32,
+      }
+    }
+
+    pub fn from_proto(proto: &communication::Node) -> Node {
+      Node {
+          id: proto.id.clone().try_into().expect("Invalid ID length"),
+          ip: proto.ip.clone(),
+          port: proto.port as u16,
+      }
     }
 
   }

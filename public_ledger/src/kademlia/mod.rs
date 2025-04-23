@@ -1,5 +1,6 @@
 pub(crate) mod routing_table;
 
+use routing_table::node;
 // Parameters
 use routing_table::params::MAX_BUCKET_SIZE;
 
@@ -17,6 +18,8 @@ pub mod communication {
 use communication::kademlia_server::{Kademlia, KademliaServer};
 use communication::{PingRequest, PingResponse, FindNodeRequest, FindNodeResponse, StoreRequest, StoreResponse, FindValueRequest, FindValueResponse, kademlia_client::KademliaClient};
 
+use crate::kademlia;
+
 // This is the main Kademlia service that will handle all the requests
 pub struct MyKademliaService {
     pub routing_table: Arc<RwLock<routing_table::RoutingTable>>,
@@ -26,23 +29,28 @@ pub struct MyKademliaService {
 #[tonic::async_trait]
 impl Kademlia for MyKademliaService {
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PingResponse>, Status> {
-        let id: [u8; 20] = request.get_ref().id.clone().try_into().map_err(|_| Status::invalid_argument("Invalid ID length"))?;
-
+       let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
+    
         // Log the received ping
-        println!("Received ping from node with ID: {:?}", hex::encode(id));
+        println!(
+            "Received ping from node with ID: {:?}, IP: {}, Port: {}",
+            hex::encode(node.get_id()),
+            node.get_ip(),
+            node.get_port()
+        );
 
         // Update the routing table with the new node
         update_routing_table_with_node(
             &self.routing_table,
-            id,
-            request.remote_addr().unwrap().ip().to_string(),
-            request.remote_addr().unwrap().port(),
+            *node.get_id(),
+            node.get_ip(),
+           node.get_port(),
         ).await;
         
         // Create a response with the current node's ID
         let routing_table = self.routing_table.read().await;
         let reply = PingResponse {
-            id: routing_table.get_curr_node().get_id().to_vec(),
+            node: Some(routing_table.get_curr_node().to_proto()),
             message: format!("Pong"),
         };
         Ok(Response::new(reply))
@@ -71,14 +79,13 @@ impl Kademlia for MyKademliaService {
     
         // Scope 2: Write lock to update the routing table
         {
-            let id: [u8; 20] = request.get_ref().id.clone().try_into()
-                .map_err(|_| Status::invalid_argument("Invalid ID length"))?;
+            let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
     
             update_routing_table_with_node(
                 &self.routing_table,
-                id,
-                request.remote_addr().unwrap().ip().to_string(),
-                request.remote_addr().unwrap().port(),
+                node.get_id().clone(),
+                node.get_ip(),
+                node.get_port(),
             ).await;
         }
     
@@ -97,12 +104,12 @@ impl Kademlia for MyKademliaService {
         let mut routing_table = self.routing_table.write().await;
         routing_table.store(key, value);
         // Update the routing table with the new node
-        let id: [u8; 20] = request.get_ref().id.clone().try_into().map_err(|_| Status::invalid_argument("Invalid ID length"))?;
+       let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
         update_routing_table_with_node(
             &self.routing_table,
-            id,
-            request.remote_addr().unwrap().ip().to_string(),
-            request.remote_addr().unwrap().port(),
+            node.get_id().clone(),
+            node.get_ip(),
+            node.get_port(),
         ).await;
 
         // Create a response with the stored message
@@ -148,14 +155,13 @@ impl Kademlia for MyKademliaService {
     
         // Scope 3: Write lock to add new node to the routing table
         {
-            let id: [u8; 20] = request.get_ref().id.clone().try_into()
-                .map_err(|_| Status::invalid_argument("Invalid ID length"))?;
+            let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
     
             update_routing_table_with_node(
                 &self.routing_table,
-                id,
-                request.remote_addr().unwrap().ip().to_string(),
-                request.remote_addr().unwrap().port(),
+                node.get_id().clone(),
+                node.get_ip(),
+                node.get_port(),
             ).await;
         }
     
@@ -200,34 +206,34 @@ pub async fn join_kademlia_network(
     // Create a new Kademlia client
     let mut client = KademliaClient::connect(uri).await?;
 
-    // Get the current node's ID (and release the read lock after)
-    let curr_node_id = {
+    // Get the current node(and release the read lock after)
+    let curr_node = {
         let routing_table_read = routing_table.read().await;
-        routing_table_read.get_curr_node().get_id().to_vec()
+        routing_table_read.get_curr_node().to_proto()
     };
 
     // Send a ping to the bootstrap node
     let request = tonic::Request::new(PingRequest {
-        id: curr_node_id.clone(),
+        node: Some(curr_node),
     });
 
     let response = client.ping(request).await?;
 
     // Update the routing table with the bootstrap node's ID
-    let boot_node_id: [u8; 20] = response
-        .get_ref()
-        .id
-        .clone()
-        .try_into()
-        .map_err(|_| "Invalid ID length")?;
+    let node = routing_table::node::Node::from_proto(response.get_ref().node.as_ref().unwrap());
 
-    println!("Ping response from bootstrap node with ID: {:?}", hex::encode(boot_node_id));
+    println!(
+        "Ping response from bootstrap node with ID: {:?}, IP: {}, Port: {}",
+        hex::encode(node.get_id()),
+        node.get_ip(),
+        node.get_port()
+    );
 
     update_routing_table_with_node(
         &routing_table,
-        boot_node_id,
-        boot_addr.clone(),
-        boot_port,
+        *node.get_id(),
+        node.get_ip(),
+        node.get_port(),
     ).await;
 
     Ok(())
