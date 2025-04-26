@@ -107,7 +107,7 @@ impl Kademlia for MyKademliaService {
             // Scope the lock so it's dropped early
             let mut routing_table = self.routing_table.write().await;
             routing_table.store(key, value);
-        } // <= 🔥 Lock released here
+        } 
     
         // Update the routing table with the new node
         let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
