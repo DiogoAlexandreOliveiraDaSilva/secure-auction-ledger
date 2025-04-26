@@ -14,20 +14,16 @@ service Kademlia {
 }
 
 message PingRequest {
-    // Node ID of the sender
-    bytes id = 1;
+    Node node = 1; // Node that is pinging
 }
 
 message PingResponse {
-    // Node ID of the receiver
-    bytes id = 1;
-    // Acknowledgment of the ping
-    string message = 2;
+    Node node = 1; // Node that is being pinged
+    string message = 2; // Acknowledgment of the ping
 }
 
 message StoreRequest {
-    // The ID of the node making the request
-    bytes id = 1;
+    Node node = 1; // Node that is storing the value
     // The key to store
     bytes key = 2;
     // The value to store
@@ -40,8 +36,7 @@ message StoreResponse {
 }
 
 message FindNodeRequest {
-    // The ID of the node making the request
-    bytes id = 1;
+    Node node = 1; // Node that is making the request
     // The key to find
     bytes key = 2;
 }
@@ -51,8 +46,7 @@ message FindNodeResponse {
 }
 
 message FindValueRequest {
-    // The ID of the node making the request
-    bytes id = 1;
+    Node node = 1; // Node that is making the request
     // The key to find
     bytes key = 2;
 }
