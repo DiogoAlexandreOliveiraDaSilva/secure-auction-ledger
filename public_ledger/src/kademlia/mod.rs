@@ -19,6 +19,7 @@ use communication::kademlia_server::{Kademlia, KademliaServer};
 use communication::{PingRequest, PingResponse, FindNodeRequest, FindNodeResponse, StoreRequest, StoreResponse, FindValueRequest, FindValueResponse, kademlia_client::KademliaClient};
 
 use crate::kademlia;
+use ring::digest::{Context, SHA256};
 
 // This is the main Kademlia service that will handle all the requests
 pub struct MyKademliaService {
@@ -96,28 +97,40 @@ impl Kademlia for MyKademliaService {
     
 
     async fn store(&self, request: Request<StoreRequest>) -> Result<Response<StoreResponse>, Status> {
+        println!("Received store request");
         // Extract key
         let key: [u8; 20] = request.get_ref().key.clone().try_into().map_err(|_| Status::invalid_argument("Invalid ID length"))?;
         // Extract value
         let value: Vec<u8> = request.get_ref().value.clone();
-        // Store the value in the local storage
-        let mut routing_table = self.routing_table.write().await;
-        routing_table.store(key, value);
+    
+        {
+            // Scope the lock so it's dropped early
+            let mut routing_table = self.routing_table.write().await;
+            routing_table.store(key, value);
+        } // <= 🔥 Lock released here
+    
         // Update the routing table with the new node
-       let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
+        let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
+    
         update_routing_table_with_node(
             &self.routing_table,
             node.get_id().clone(),
             node.get_ip(),
             node.get_port(),
         ).await;
-
+    
+        println!("Stored value with key: {:?}, from node with ID: {:?}",
+            hex::encode(key),
+            hex::encode(node.get_id())
+        );
+    
         // Create a response with the stored message
         let reply = StoreResponse {
             message: "Stored successfully".to_string(),
         };
         Ok(Response::new(reply))
     }
+    
 
     async fn find_value(&self, request: Request<FindValueRequest>) -> Result<Response<FindValueResponse>, Status> {
         // Extract the key from the request
@@ -245,4 +258,54 @@ async fn update_routing_table_with_node(routing_table: &RwLock<routing_table::Ro
     let mut routing_table = routing_table.write().await;
     routing_table.add_node(new_node);
     println!("Added node with ID to Table: {:?}", hex::encode(id));
+}
+
+
+pub async fn store_value_dht(
+    routing_table: &RwLock<routing_table::RoutingTable>,
+    key: [u8; 20],
+    value: Vec<u8>,
+) {
+    // Use a single read lock to get the current node and K-closest nodes
+    let (curr_node, k_closest) = {
+        let routing_table = routing_table.read().await;
+        (
+            routing_table.get_curr_node().clone(),
+            routing_table.get_closest_k_nodes(&key, MAX_BUCKET_SIZE),
+        )
+    };
+
+    // Iterate over the k-closest nodes and send the value to each node
+    for node in k_closest {
+        // Create a new Kademlia client
+        
+        let uri = format!("http://[{}]:{}", node.get_ip(), node.get_port());
+        let mut client = KademliaClient::connect(uri).await.unwrap();
+            
+        // Send the value to the node
+        let request = tonic::Request::new(StoreRequest {
+            node: Some(curr_node.to_proto()),
+            key: key.to_vec(),
+            value: value.clone(),
+        });
+
+        match client.store(request).await {
+            Ok(response) => {
+                println!("Stored value on node with ID: {:?}, Response: {:?}", hex::encode(node.get_id()), response.into_inner().message);
+            }
+            Err(e) => {
+                println!("Failed to store value on node with ID: {:?}, Error: {:?}", hex::encode(node.get_id()), e);
+            }
+        }
+    }
+}
+
+pub fn string_to_hash_key(key: &str) -> [u8; 20] {
+
+    let mut context = Context::new(&SHA256);
+    context.update(key.as_bytes());
+    let result = context.finish();
+    let mut hash_key = [0u8; 20];
+    hash_key.copy_from_slice(&result.as_ref()[..20]);
+    hash_key
 }

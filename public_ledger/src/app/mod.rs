@@ -2,9 +2,11 @@
 use eframe::{egui, App, Frame};
 use screens::join_screen::JoinScreen;
 use screens::menu_screen::MenuScreen;
+use screens::menu_screen::MenuScreenEvent;
 use tokio::sync::RwLock;
 use std::sync::Arc;
 use crate::kademlia;
+use crate::kademlia::store_value_dht;
 use crate::routing_table;
 
 mod screens;
@@ -110,7 +112,18 @@ impl App for AuctionApp {
                                 }
                             }
                 AppState::Menu => {
-                            self.menu_screen.ui(ui);
+                            if let Some(event) = self.menu_screen.ui(ui) {
+                                match event {
+                                    MenuScreenEvent::SubmittedStore { key, value } => {
+                                        let routing_table = self.routing_table.clone().unwrap();
+                                        let routing_table_clone = routing_table.clone();
+                                        let hash = kademlia::string_to_hash_key(&key.clone());
+                                        tokio::spawn(async move {
+                                            store_value_dht(&routing_table_clone, hash, value.into()).await;
+                                        });
+                                    }
+                                }
+                            }
                 },
             }
         });
