@@ -2,9 +2,16 @@
 use eframe::{egui, App, Frame};
 use screens::join_screen::JoinScreen;
 use screens::menu_screen::MenuScreen;
+use screens::menu_screen::MenuScreenEvent;
+use tokio::sync::oneshot;
+use tokio::sync::Mutex;
 use tokio::sync::RwLock;
+use std::result;
+use std::str::from_utf8;
 use std::sync::Arc;
 use crate::kademlia;
+use crate::kademlia::find_value_dht;
+use crate::kademlia::store_value_dht;
 use crate::routing_table;
 
 mod screens;
@@ -20,6 +27,7 @@ pub struct AuctionApp {
     selection_screen: SelectionScreen,
     join_screen: JoinScreen,
     menu_screen: MenuScreen,
+    result_string: Arc<Mutex<String>>,
 }
 
 impl AuctionApp {
@@ -31,6 +39,7 @@ impl AuctionApp {
             selection_screen: SelectionScreen::default(),
             join_screen: JoinScreen::default(),
             menu_screen: MenuScreen::default(),
+            result_string: Arc::new(Mutex::new("".to_string())),
         }
     }
 
@@ -110,7 +119,45 @@ impl App for AuctionApp {
                                 }
                             }
                 AppState::Menu => {
-                            self.menu_screen.ui(ui);
+                            let result_string = self.result_string.try_lock().unwrap(); // Lock to read the result string
+                            self.menu_screen.set_search_value(result_string.clone());
+                            if let Some(event) = self.menu_screen.ui(ui) {
+                                match event {
+                                    MenuScreenEvent::SubmittedStore { key, value } => {
+                                        let routing_table = self.routing_table.clone().unwrap();
+                                        let routing_table_clone = routing_table.clone();
+                                        let hash = kademlia::string_to_hash_key(&key.clone());
+                                        tokio::spawn(async move {
+                                            store_value_dht(&routing_table_clone, hash, value.as_bytes().to_vec()).await;
+                                        });
+                                    }
+                                    MenuScreenEvent::SubmittedSearch { key } => {
+                                        let routing_table = self.routing_table.clone().unwrap();
+                                        let result_string = self.result_string.clone(); // Clone Arc for async task
+                                        tokio::spawn({
+                                            let routing_table = routing_table.clone(); // Clone for async task
+                                            let result_string: Arc<Mutex<String>> = Arc::clone(&result_string); // Clone Arc for async task
+                                    
+                                            async move {
+                                                let hash = kademlia::string_to_hash_key(&key);
+                                                let value = find_value_dht(&routing_table, hash).await;
+                                                let mut result_string = result_string.lock().await; // Lock to update the result string
+                                    
+                                                match value {
+                                                    Some(bytes) => {
+                                                        *result_string = format!("Found: {}", from_utf8(&bytes).unwrap_or("Invalid UTF-8"));
+                                                        println!("Value found: {:?}", from_utf8(&bytes)); // Debugging
+                                                    },
+                                                    None => {
+                                                        *result_string = "Value not found".to_string();
+                                                        println!("Value not found"); // Debugging
+                                                    }
+                                                }
+                                            }
+                                        });                                        
+                                    }
+                                }
+                            }
                 },
             }
         });

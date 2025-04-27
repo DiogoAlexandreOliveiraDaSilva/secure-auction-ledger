@@ -23,7 +23,7 @@ message PingResponse {
 }
 
 message StoreRequest {
-    Node node = 1; // Node that is storing the value
+    Node node = 1; // Node that is requesting the store
     // The key to store
     bytes key = 2;
     // The value to store
