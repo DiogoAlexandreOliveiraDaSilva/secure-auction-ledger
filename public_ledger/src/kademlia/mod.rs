@@ -252,6 +252,9 @@ pub async fn join_kademlia_network(
         node.get_port(),
     ).await;
 
+    // Refresh the routing table
+    refresh_routing_table(routing_table.clone()).await;
+
     Ok(())
 }
 
@@ -389,4 +392,81 @@ pub async fn find_value_dht(
     }
 
     None
+}
+
+pub async fn refresh_bucket(
+    routing_table: &RwLock<routing_table::RoutingTable>,
+    bucket_index: u8,
+) {
+    // Get curr_node
+    let curr_node = Arc::new({
+        let rt = routing_table.read().await;
+        rt.get_curr_node().clone()
+    });
+
+    let bucket = {
+        let routing_table = routing_table.read().await;
+        routing_table.get_k_bucket_map().get(&bucket_index).cloned()
+    };
+
+
+
+    if let Some(bucket) = bucket {
+        if let Some(random_node) = bucket.get_random_node() {
+            let random_id = routing_table::node_id::generate_random_id_near_distance(curr_node.get_id(), bucket_index);
+
+            let uri = format!("http://[{}]:{}", random_node.get_ip(), random_node.get_port());
+            if let Ok(mut client) = KademliaClient::connect(uri.clone()).await {
+                let request = tonic::Request::new(FindNodeRequest {
+                    key: random_id,
+                    node: Some(curr_node.to_proto()), // Send the current node info
+                });
+
+                // Send the FindNodeRequest and handle the response
+                match client.find_node(request).await {
+                    Ok(response) => {
+                        let nodes = response.into_inner().nodes;
+
+                        // Lock the routing table to update nodes
+                        let mut routing_table = routing_table.write().await;
+                        for node_proto in nodes {
+                            let node: Node = Node::from_proto(&node_proto);
+                            routing_table.add_node(node);
+                        }
+
+                        println!("Refreshed bucket nº {}", bucket_index);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to refresh bucket with node ID: {:?}, Error: {:?}",
+                            hex::encode(random_node.get_id()),
+                            e
+                        );
+                    }
+                }
+            } else {
+                eprintln!("Failed to connect to node at {}", uri.clone());
+            }
+        } else {
+            eprintln!("No random node found in bucket {}", bucket_index);
+        }
+    } else {
+        eprintln!("Bucket {} not found", bucket_index);
+    }
+}
+
+
+pub async fn refresh_routing_table(routing_table: Arc<RwLock<routing_table::RoutingTable>>) {
+    let buckets = routing_table.read().await.get_k_bucket_map().clone();
+    let mut futures = vec![];
+
+    for (bucket_index, _bucket) in buckets {
+        let routing_table_clone = Arc::clone(&routing_table);
+        futures.push(tokio::spawn(async move {
+            refresh_bucket(&routing_table_clone, bucket_index).await;
+        }));
+    }
+
+    // Wait for all tasks to complete
+    join_all(futures).await;
 }
