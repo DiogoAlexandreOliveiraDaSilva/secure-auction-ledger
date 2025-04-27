@@ -9,6 +9,8 @@ pub struct MenuScreen {
     node_id: Vec<u8>,
     key: String,
     value: String,
+    search_key: String,
+    search_value: String,
 }
 
 pub enum MenuScreenEvent {
@@ -16,6 +18,9 @@ pub enum MenuScreenEvent {
         key: String,
         value: String,
     },
+    SubmittedSearch {
+        key: String,
+    }
 }
 impl MenuScreen {
     pub fn ui(&mut self, ui: &mut Ui) -> Option<MenuScreenEvent> {
@@ -64,6 +69,27 @@ impl MenuScreen {
             }
         });
 
+        ui.add_space(10.0);
+        ui.group(|ui| {
+            ui.label("Search Key:");
+            ui.horizontal(|ui| {
+                ui.label("Key:");
+                ui.text_edit_singleline(&mut self.search_key);
+            });
+            ui.add_space(10.0);
+            if ui.button("Submit Search").clicked() {
+                result = Some(MenuScreenEvent::SubmittedSearch {
+                    key: self.search_key.clone(),
+                });
+            }
+            ui.add_space(10.0);
+            if !self.search_value.is_empty() {
+                let value = &self.search_value;
+                ui.label(format!("Search Result: {}", value));
+            }
+            
+        });
+
         result
     }
 
@@ -71,5 +97,9 @@ impl MenuScreen {
         self.ip = ip;
         self.port = port;
         self.node_id = node_id;
+    }
+
+    pub fn set_search_value(&mut self, value: String) {
+        self.search_value = value;
     }
 }

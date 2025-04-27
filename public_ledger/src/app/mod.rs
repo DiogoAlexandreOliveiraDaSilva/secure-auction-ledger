@@ -3,9 +3,12 @@ use eframe::{egui, App, Frame};
 use screens::join_screen::JoinScreen;
 use screens::menu_screen::MenuScreen;
 use screens::menu_screen::MenuScreenEvent;
+use tokio::sync::oneshot;
 use tokio::sync::RwLock;
+use std::str::from_utf8;
 use std::sync::Arc;
 use crate::kademlia;
+use crate::kademlia::find_value_dht;
 use crate::kademlia::store_value_dht;
 use crate::routing_table;
 
@@ -119,9 +122,21 @@ impl App for AuctionApp {
                                         let routing_table_clone = routing_table.clone();
                                         let hash = kademlia::string_to_hash_key(&key.clone());
                                         tokio::spawn(async move {
-                                            store_value_dht(&routing_table_clone, hash, value.into()).await;
+                                            store_value_dht(&routing_table_clone, hash, value.as_bytes().to_vec()).await;
                                         });
                                     }
+                                    MenuScreenEvent::SubmittedSearch { key } => {
+                                        let routing_table = self.routing_table.clone().unwrap();
+                                        tokio::spawn(async move {
+                                            let hash = kademlia::string_to_hash_key(&key);
+                                            let value = find_value_dht(&routing_table, hash).await;
+                                            match value {
+                                                Some(bytes) => println!("Value found: {:?}", from_utf8(&bytes)),
+                                                None => println!("Value not found"),
+                                            }
+                                        });
+                                    }
+
                                 }
                             }
                 },
