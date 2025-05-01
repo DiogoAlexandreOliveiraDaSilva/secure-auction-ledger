@@ -4,7 +4,7 @@ use egui::Ui;
 pub struct CreateScreen {
     item_name: String,
     starting_price: String,
-    ending_time: String,
+    duration: String,
 }
 
 pub enum CreateScreenEvent {
@@ -29,8 +29,8 @@ impl CreateScreen {
             ui.text_edit_singleline(&mut self.starting_price);
             ui.add_space(10.0);
 
-            ui.label("Ending Time (hours):");
-            ui.text_edit_singleline(&mut self.ending_time);
+            ui.label("Duration (Hours):");
+            ui.text_edit_singleline(&mut self.duration);
             ui.add_space(20.0);
 
             ui.horizontal(|ui| {
@@ -40,7 +40,7 @@ impl CreateScreen {
                 if ui.button("Submit").clicked() {
                     if let (Ok(price), Ok(time)) = (
                         self.starting_price.parse::<f64>(),
-                        self.ending_time.parse::<u64>(),
+                        self.duration.parse::<u64>(),
                     ) {
                         result = Some(CreateScreenEvent::Submitted(
                             self.item_name.clone(),

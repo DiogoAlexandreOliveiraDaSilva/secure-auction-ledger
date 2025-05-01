@@ -1,3 +1,4 @@
+use crate::auction;
 // main.rs
 use crate::kademlia;
 use crate::kademlia::find_value_dht;
@@ -7,6 +8,8 @@ use eframe::{App, Frame, egui};
 use screens::join_screen::JoinScreen;
 use screens::menu_screen::MenuScreen;
 use screens::menu_screen::MenuScreenEvent;
+
+use crate::auction::Auction;
 
 use std::result;
 use std::str::from_utf8;
@@ -33,6 +36,7 @@ pub struct AuctionApp {
     auction_screen: AuctionScreen,
     create_screen: CreateScreen,
     result_string: Arc<Mutex<String>>,
+    latest_auction: Arc<Mutex<Auction>>,
 }
 
 impl AuctionApp {
@@ -47,6 +51,7 @@ impl AuctionApp {
             auction_screen: AuctionScreen::default(),
             create_screen: CreateScreen::default(),
             result_string: Arc::new(Mutex::new("".to_string())),
+            latest_auction: Arc::new(Mutex::new(Auction::default())),
         }
     }
 
@@ -174,7 +179,7 @@ impl App for AuctionApp {
                                         match value {
                                             Some(bytes) => {
                                                 *result_string = format!(
-                                                    "Found: {}",
+                                                    "{}",
                                                     from_utf8(&bytes).unwrap_or("Invalid UTF-8")
                                                 );
                                                 println!("Value found: {:?}", from_utf8(&bytes)); // Debugging
@@ -214,13 +219,53 @@ impl App for AuctionApp {
                             screens::create_screen::CreateScreenEvent::Submitted(
                                 item_name,
                                 starting_price,
-                                ending_time,
+                                duration_hours,
                             ) => {
-                                println!(
-                                    "Item Name: {}, Starting Price: {}, Ending Time: {}",
-                                    item_name, starting_price, ending_time
+                                // Get Last Auction ID
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let latest_auction = self.latest_auction.clone();
+                                tokio::spawn({
+                                    let routing_table = routing_table.clone(); // Clone for async task
+                                    let latest_auction = latest_auction.clone(); // Clone for async task
+
+                                    async move {
+                                        let hash = kademlia::string_to_hash_key("last_auction"); // Predefined key
+                                        let value = find_value_dht(&routing_table, hash).await;
+                                        let mut latest_auction = latest_auction.lock().await; // Lock to update the result string
+
+                                        match value {
+                                            Some(bytes) => {
+                                                *latest_auction = Auction::deserialized(
+                                                    from_utf8(&bytes).unwrap(),
+                                                );
+                                                println!("Auction found: {:?}", latest_auction); // Debugging
+                                            }
+                                            None => {
+                                                println!("Auction not found"); // Debugging
+                                            }
+                                        }
+                                    }
+                                });
+
+                                // Increment Auction ID
+                                let latest_auction = self.latest_auction.clone();
+                                let auction_id = tokio::task::block_in_place(|| {
+                                    let rt = tokio::runtime::Handle::current();
+                                    rt.block_on(async {
+                                        let mut latest_auction = latest_auction.lock().await; // Lock to update the result string
+                                        latest_auction.id.clone() + 1
+                                    })
+                                });
+
+                                // Create Auction ID
+                                let auction = Auction::new_with_duration(
+                                    auction_id,
+                                    item_name,
+                                    starting_price,
+                                    duration_hours,
                                 );
-                                self.state = AppState::Auction;
+
+                                println!("Auction created: {:?}", auction);
                             }
                         }
                     }
