@@ -1,24 +1,27 @@
 // main.rs
-use eframe::{egui, App, Frame};
-use screens::join_screen::JoinScreen;
-use screens::menu_screen::MenuScreen;
-use screens::menu_screen::MenuScreenEvent;
-use tokio::sync::oneshot;
-use tokio::sync::Mutex;
-use tokio::sync::RwLock;
-use std::result;
-use std::str::from_utf8;
-use std::sync::Arc;
 use crate::kademlia;
 use crate::kademlia::find_value_dht;
 use crate::kademlia::store_value_dht;
 use crate::routing_table;
+use eframe::{App, Frame, egui};
+use screens::join_screen::JoinScreen;
+use screens::menu_screen::MenuScreen;
+use screens::menu_screen::MenuScreenEvent;
+
+use std::result;
+use std::str::from_utf8;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::sync::RwLock;
+use tokio::sync::oneshot;
 
 mod screens;
-use screens::initial_screen::{InitialScreen, InitialScreenEvent};
-use screens::selection_screen::{SelectionScreenEvent, SelectionScreen};
-use screens::join_screen::JoinScreenEvent;
 use screens::AppState;
+use screens::auction_screen::AuctionScreen;
+use screens::create_screen::CreateScreen;
+use screens::initial_screen::{InitialScreen, InitialScreenEvent};
+use screens::join_screen::JoinScreenEvent;
+use screens::selection_screen::{SelectionScreen, SelectionScreenEvent};
 
 pub struct AuctionApp {
     pub(crate) state: AppState,
@@ -27,6 +30,8 @@ pub struct AuctionApp {
     selection_screen: SelectionScreen,
     join_screen: JoinScreen,
     menu_screen: MenuScreen,
+    auction_screen: AuctionScreen,
+    create_screen: CreateScreen,
     result_string: Arc<Mutex<String>>,
 }
 
@@ -39,6 +44,8 @@ impl AuctionApp {
             selection_screen: SelectionScreen::default(),
             join_screen: JoinScreen::default(),
             menu_screen: MenuScreen::default(),
+            auction_screen: AuctionScreen::default(),
+            create_screen: CreateScreen::default(),
             result_string: Arc::new(Mutex::new("".to_string())),
         }
     }
@@ -47,7 +54,11 @@ impl AuctionApp {
         if let Some(rt) = &self.routing_table {
             if let Ok(rt_read) = rt.try_read() {
                 let node = rt_read.get_curr_node().clone();
-                self.menu_screen.set_info(node.get_ip(), node.get_port().to_string(), node.get_id().to_vec());
+                self.menu_screen.set_info(
+                    node.get_ip(),
+                    node.get_port().to_string(),
+                    node.get_id().to_vec(),
+                );
             }
         }
     }
@@ -58,109 +69,163 @@ impl App for AuctionApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             match self.state {
                 AppState::Initial => {
-                                if let Some(event) = self.initial_screen.ui(ui) {
-                                    match event {
-                                        InitialScreenEvent::Submitted(port) => {
-                                            let addr = "::1".to_string();
-                                            self.routing_table = Some(Arc::new(RwLock::new(routing_table::RoutingTable::new(addr.clone(), port))));
-                                            if let Some(routing_table) = self.routing_table.clone() {
-                                                let routing_table_clone = routing_table.clone();
-                                                let addr_clone = addr.clone();
-                                                tokio::spawn({
-                                                    let addr_clone = addr_clone.clone();
-                                                    async move {
-                                                        if let Err(e) = kademlia::start_kademlia_server(routing_table_clone, addr_clone.clone(), port).await {
-                                                            eprintln!("Failed to start Kademlia server: {}", e);
-                                                        }
-                                                    }
-                                                });
-                                                println!("Kademlia server started on {}:{}", addr, port);
-                                                self.state = AppState::Selection;
-                                            } else {
-                                                println!("Routing table is not initialized");
-                                                self.state = AppState::Initial;
+                    if let Some(event) = self.initial_screen.ui(ui) {
+                        match event {
+                            InitialScreenEvent::Submitted(port) => {
+                                let addr = "::1".to_string();
+                                self.routing_table = Some(Arc::new(RwLock::new(
+                                    routing_table::RoutingTable::new(addr.clone(), port),
+                                )));
+                                if let Some(routing_table) = self.routing_table.clone() {
+                                    let routing_table_clone = routing_table.clone();
+                                    let addr_clone = addr.clone();
+                                    tokio::spawn({
+                                        let addr_clone = addr_clone.clone();
+                                        async move {
+                                            if let Err(e) = kademlia::start_kademlia_server(
+                                                routing_table_clone,
+                                                addr_clone.clone(),
+                                                port,
+                                            )
+                                            .await
+                                            {
+                                                eprintln!("Failed to start Kademlia server: {}", e);
                                             }
                                         }
-                                    }
+                                    });
+                                    println!("Kademlia server started on {}:{}", addr, port);
+                                    self.state = AppState::Selection;
+                                } else {
+                                    println!("Routing table is not initialized");
+                                    self.state = AppState::Initial;
                                 }
                             }
+                        }
+                    }
+                }
                 AppState::Selection => {
-                                if let Some(event) = self.selection_screen.ui(ui) {
-                                    match event {
-                                        SelectionScreenEvent::Join => {
-                                            self.state = AppState::Join;
-                                        }
-                                        SelectionScreenEvent::Create => {
-                                            self.update_menu_screen_info();
-                                            self.state = AppState::Menu;
-                                        }
-                                    }
-                                }
+                    if let Some(event) = self.selection_screen.ui(ui) {
+                        match event {
+                            SelectionScreenEvent::Join => {
+                                self.state = AppState::Join;
                             }
+                            SelectionScreenEvent::Create => {
+                                self.update_menu_screen_info();
+                                self.state = AppState::Menu;
+                            }
+                        }
+                    }
+                }
                 AppState::Join => {
-                                if let Some(event) = self.join_screen.ui(ui) {
-                                    match event {
-                                        JoinScreenEvent::Submitted(port) => {
-                                            let routing_table = self.routing_table.clone().unwrap();
-                                            let addr = "::1".to_string();
-                                            tokio::spawn(async move {
-                                                if let Err(e) = kademlia::join_kademlia_network(routing_table, addr, port).await {
-                                                    eprintln!("Failed to join Kademlia network: {}", e);
-                                                }
-                                            });
+                    if let Some(event) = self.join_screen.ui(ui) {
+                        match event {
+                            JoinScreenEvent::Submitted(port) => {
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let addr = "::1".to_string();
+                                tokio::spawn(async move {
+                                    if let Err(e) =
+                                        kademlia::join_kademlia_network(routing_table, addr, port)
+                                            .await
+                                    {
+                                        eprintln!("Failed to join Kademlia network: {}", e);
+                                    }
+                                });
 
-                                            self.update_menu_screen_info();
-                                            self.state = AppState::Menu;
-                                        }
-                                        JoinScreenEvent::Back => {
-                                            self.state = AppState::Selection;
-                                        }
-                                    }
-                                }
+                                self.update_menu_screen_info();
+                                self.state = AppState::Menu;
                             }
+                            JoinScreenEvent::Back => {
+                                self.state = AppState::Selection;
+                            }
+                        }
+                    }
+                }
                 AppState::Menu => {
-                            let result_string = self.result_string.try_lock().unwrap(); // Lock to read the result string
-                            self.menu_screen.set_search_value(result_string.clone());
-                            if let Some(event) = self.menu_screen.ui(ui) {
-                                match event {
-                                    MenuScreenEvent::SubmittedStore { key, value } => {
-                                        let routing_table = self.routing_table.clone().unwrap();
-                                        let routing_table_clone = routing_table.clone();
-                                        let hash = kademlia::string_to_hash_key(&key.clone());
-                                        tokio::spawn(async move {
-                                            store_value_dht(&routing_table_clone, hash, value.as_bytes().to_vec()).await;
-                                        });
-                                    }
-                                    MenuScreenEvent::SubmittedSearch { key } => {
-                                        let routing_table = self.routing_table.clone().unwrap();
-                                        let result_string = self.result_string.clone(); // Clone Arc for async task
-                                        tokio::spawn({
-                                            let routing_table = routing_table.clone(); // Clone for async task
-                                            let result_string: Arc<Mutex<String>> = Arc::clone(&result_string); // Clone Arc for async task
-                                    
-                                            async move {
-                                                let hash = kademlia::string_to_hash_key(&key);
-                                                let value = find_value_dht(&routing_table, hash).await;
-                                                let mut result_string = result_string.lock().await; // Lock to update the result string
-                                    
-                                                match value {
-                                                    Some(bytes) => {
-                                                        *result_string = format!("Found: {}", from_utf8(&bytes).unwrap_or("Invalid UTF-8"));
-                                                        println!("Value found: {:?}", from_utf8(&bytes)); // Debugging
-                                                    },
-                                                    None => {
-                                                        *result_string = "Value not found".to_string();
-                                                        println!("Value not found"); // Debugging
-                                                    }
-                                                }
-                                            }
-                                        });                                        
-                                    }
-                                }
+                    let result_string = self.result_string.try_lock().unwrap(); // Lock to read the result string
+                    self.menu_screen.set_search_value(result_string.clone());
+                    if let Some(event) = self.menu_screen.ui(ui) {
+                        match event {
+                            MenuScreenEvent::SubmittedStore { key, value } => {
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let routing_table_clone = routing_table.clone();
+                                let hash = kademlia::string_to_hash_key(&key.clone());
+                                tokio::spawn(async move {
+                                    store_value_dht(
+                                        &routing_table_clone,
+                                        hash,
+                                        value.as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                });
                             }
-                },
+                            MenuScreenEvent::SubmittedSearch { key } => {
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let result_string = self.result_string.clone(); // Clone Arc for async task
+                                tokio::spawn({
+                                    let routing_table = routing_table.clone(); // Clone for async task
+                                    let result_string: Arc<Mutex<String>> =
+                                        Arc::clone(&result_string); // Clone Arc for async task
+
+                                    async move {
+                                        let hash = kademlia::string_to_hash_key(&key);
+                                        let value = find_value_dht(&routing_table, hash).await;
+                                        let mut result_string = result_string.lock().await; // Lock to update the result string
+
+                                        match value {
+                                            Some(bytes) => {
+                                                *result_string = format!(
+                                                    "Found: {}",
+                                                    from_utf8(&bytes).unwrap_or("Invalid UTF-8")
+                                                );
+                                                println!("Value found: {:?}", from_utf8(&bytes)); // Debugging
+                                            }
+                                            None => {
+                                                *result_string = "Value not found".to_string();
+                                                println!("Value not found"); // Debugging
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                            MenuScreenEvent::Auction => {
+                                self.state = AppState::Auction;
+                            }
+                        }
+                    }
+                }
+                AppState::Auction => {
+                    if let Some(event) = self.auction_screen.ui(ui) {
+                        match event {
+                            screens::auction_screen::AuctionScreenEvent::Create => {
+                                self.state = AppState::Create;
+                            }
+                            screens::auction_screen::AuctionScreenEvent::Back => {
+                                self.state = AppState::Menu;
+                            }
+                        }
+                    }
+                }
+                AppState::Create => {
+                    if let Some(event) = self.create_screen.ui(ui) {
+                        match event {
+                            screens::create_screen::CreateScreenEvent::Back => {
+                                self.state = AppState::Auction;
+                            }
+                            screens::create_screen::CreateScreenEvent::Submitted(
+                                item_name,
+                                starting_price,
+                                ending_time,
+                            ) => {
+                                println!(
+                                    "Item Name: {}, Starting Price: {}, Ending Time: {}",
+                                    item_name, starting_price, ending_time
+                                );
+                                self.state = AppState::Auction;
+                            }
+                        }
+                    }
+                }
             }
         });
     }
-
 }

@@ -16,7 +16,7 @@ impl JoinScreen {
 
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
-            ui.heading("Join a Distributed Auction");
+            ui.heading("Join or Create Distribution Auction Network");
 
             ui.add_space(10.0);
             ui.label("Please enter the port number to join the server:");
