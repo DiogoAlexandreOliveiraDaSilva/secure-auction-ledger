@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use super::{node::Node, params::MAX_BUCKET_SIZE};
 
 // K_Bucket is a struct that represents a bucket in the Kademlia DHT Tree
+#[derive(Clone)]
 pub(crate) struct K_Bucket{
     // k is the maximum number of nodes that a bucket can hold
     k: usize,
@@ -51,6 +52,15 @@ impl K_Bucket {
     // Get the nodes in the bucket
     pub fn get_nodes(&self) -> &VecDeque<Node> {
         &self.nodes
+    }
+
+    pub fn get_random_node(&self) -> Option<Node> {
+        if self.nodes.is_empty() {
+            return None;
+        }
+        use rand::Rng;
+        let random_index = rand::rng().random_range(0..self.nodes.len());
+        Some(self.nodes[random_index].clone())
     }
     
 }

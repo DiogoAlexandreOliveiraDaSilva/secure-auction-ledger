@@ -36,3 +36,25 @@ pub fn find_k_bucket_index(xor_distance: &[u8; 20]) -> usize {
     }
     160  // If no bit is '1', return 160 (indicating no bucket, should not happen)
 }
+
+pub fn generate_random_id_near_distance(my_id: &[u8], bucket_index: u8) -> Vec<u8> {
+    let mut rng = rand::rng();
+    let mut random_id = my_id.to_vec();
+
+    // Calculate which bit to flip: the bit at position (ID length * 8 - 1 - bucket_index)
+    let bit_pos = (random_id.len() * 8 - 1) - bucket_index as usize;
+    let byte_pos = bit_pos / 8;
+    let bit_in_byte = bit_pos % 8;
+
+    // Flip that bit
+    if byte_pos < random_id.len() {
+        random_id[byte_pos] ^= 1 << bit_in_byte;
+    }
+
+    // Randomize bits *after* the flipped bit to make it more "random" in that region
+    for i in (byte_pos + 1)..random_id.len() {
+        random_id[i] = rng.random();
+    }
+
+    random_id
+}

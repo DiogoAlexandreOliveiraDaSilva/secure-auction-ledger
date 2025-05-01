@@ -104,4 +104,8 @@ impl RoutingTable {
         self.local_storage.get(&key)
     }
 
+    pub fn get_k_bucket(&self, index: u8) -> Option<&k_bucket::K_Bucket> {
+        self.k_bucket_map.get(&index)
+    }
+
 }
