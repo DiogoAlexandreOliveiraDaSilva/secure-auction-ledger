@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::kademlia::routing_table::node::Node;
 
 pub(crate) mod node;
 pub(crate) mod k_bucket;
@@ -104,4 +105,33 @@ impl RoutingTable {
         self.local_storage.get(&key)
     }
 
+    pub fn print(&self) -> String {
+        let mut output = String::new();
+        output.push_str("----------------------------\n");
+        output.push_str("Routing Table of :\n");
+        output.push_str("----------------------------\n");
+    
+        for (index, bucket) in &self.k_bucket_map {
+            output.push_str(&format!("Bucket {}:\n", index));
+            for node in bucket.get_nodes() {
+                output.push_str(&format!("  {}\n", node));
+            }
+        }
+        output
+    }
+    
+}
+
+use std::fmt;
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Manual hex encoding of [u8; 20]
+        let id_str: String = self.get_id()
+            .iter()
+            .map(|byte| format!("{:02x}", byte))
+            .collect();
+
+        write!(f, "Node(id: {}, ip: {}, port: {})", id_str, self.get_ip(), self.get_port())
+    }
 }

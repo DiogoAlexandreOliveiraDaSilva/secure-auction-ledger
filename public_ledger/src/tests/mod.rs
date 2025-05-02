@@ -7,4 +7,6 @@ mod tests {
     mod k_bucket;
 
     mod routing_table;
+
+    pub mod print_routing_table;
 }
