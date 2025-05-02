@@ -4,22 +4,25 @@ use futures::future::join_all;
 use routing_table::node::{self, Node};
 use routing_table::node_id::distance;
 // Parameters
-use routing_table::params::{MAX_BUCKET_SIZE, ALPHA};
+use routing_table::params::{ALPHA, MAX_BUCKET_SIZE};
 
 // ARC and RwLock are used to allow multiple threads to access the routing table concurrently
-use tokio::sync::{RwLock};
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 // Tonic GRPC server
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::{Request, Response, Status, transport::Server};
 
 // Protobuf generated code
 pub mod communication {
     tonic::include_proto!("communication");
 }
 use communication::kademlia_server::{Kademlia, KademliaServer};
-use communication::{PingRequest, PingResponse, FindNodeRequest, FindNodeResponse, StoreRequest, StoreResponse, FindValueRequest, FindValueResponse, kademlia_client::KademliaClient};
+use communication::{
+    FindNodeRequest, FindNodeResponse, FindValueRequest, FindValueResponse, PingRequest,
+    PingResponse, StoreRequest, StoreResponse, kademlia_client::KademliaClient,
+};
 
 use crate::kademlia;
 use ring::digest::{Context, SHA256};
@@ -33,8 +36,8 @@ pub struct MyKademliaService {
 #[tonic::async_trait]
 impl Kademlia for MyKademliaService {
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PingResponse>, Status> {
-       let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
-    
+        let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
+
         // Log the received ping
         println!(
             "Received ping from node with ID: {:?}, IP: {}, Port: {}",
@@ -48,9 +51,10 @@ impl Kademlia for MyKademliaService {
             &self.routing_table,
             *node.get_id(),
             node.get_ip(),
-           node.get_port(),
-        ).await;
-        
+            node.get_port(),
+        )
+        .await;
+
         // Create a response with the current node's ID
         let routing_table = self.routing_table.read().await;
         let reply = PingResponse {
@@ -60,17 +64,24 @@ impl Kademlia for MyKademliaService {
         Ok(Response::new(reply))
     }
 
-    async fn find_node(&self, request: Request<FindNodeRequest>) -> Result<Response<FindNodeResponse>, Status> {
+    async fn find_node(
+        &self,
+        request: Request<FindNodeRequest>,
+    ) -> Result<Response<FindNodeResponse>, Status> {
         // Extract the ID from the request
-        let key: [u8; 20] = request.get_ref().key.clone().try_into()
+        let key: [u8; 20] = request
+            .get_ref()
+            .key
+            .clone()
+            .try_into()
             .map_err(|_| Status::invalid_argument("Invalid ID length"))?;
-    
+
         // Scope 1: Read lock to get the closest nodes
         let closest_nodes = {
             let routing_table = self.routing_table.read().await;
             routing_table.get_closest_k_nodes(&key, MAX_BUCKET_SIZE)
         };
-    
+
         // Convert to protobuf nodes
         let nodes: Vec<communication::Node> = closest_nodes
             .into_iter()
@@ -80,66 +91,83 @@ impl Kademlia for MyKademliaService {
                 port: node.get_port() as u32,
             })
             .collect();
-    
+
         // Scope 2: Write lock to update the routing table
         {
-            let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
-    
+            let node =
+                routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
+
             update_routing_table_with_node(
                 &self.routing_table,
                 node.get_id().clone(),
                 node.get_ip(),
                 node.get_port(),
-            ).await;
+            )
+            .await;
         }
-    
+
         // Response with the closest nodes
         let reply = FindNodeResponse { nodes };
         Ok(Response::new(reply))
     }
-    
 
-    async fn store(&self, request: Request<StoreRequest>) -> Result<Response<StoreResponse>, Status> {
+    async fn store(
+        &self,
+        request: Request<StoreRequest>,
+    ) -> Result<Response<StoreResponse>, Status> {
         println!("Received store request");
         // Extract key
-        let key: [u8; 20] = request.get_ref().key.clone().try_into().map_err(|_| Status::invalid_argument("Invalid ID length"))?;
+        let key: [u8; 20] = request
+            .get_ref()
+            .key
+            .clone()
+            .try_into()
+            .map_err(|_| Status::invalid_argument("Invalid ID length"))?;
         // Extract value
         let value: Vec<u8> = request.get_ref().value.clone();
-    
+
         {
             // Scope the lock so it's dropped early
             let mut routing_table = self.routing_table.write().await;
             routing_table.store(key, value);
-        } 
-    
+        }
+
         // Update the routing table with the new node
         let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
-    
+
         update_routing_table_with_node(
             &self.routing_table,
             node.get_id().clone(),
             node.get_ip(),
             node.get_port(),
-        ).await;
-    
-        println!("Stored value with key: {:?}, from node with ID: {:?}",
+        )
+        .await;
+
+        println!(
+            "Stored value with key: {:?}, from node with ID: {:?}",
             hex::encode(key),
             hex::encode(node.get_id())
         );
-    
+
         // Create a response with the stored message
         let reply = StoreResponse {
             message: "Stored successfully".to_string(),
         };
         Ok(Response::new(reply))
     }
-    
 
-    async fn find_value(&self, request: Request<FindValueRequest>) -> Result<Response<FindValueResponse>, Status> {
+    async fn find_value(
+        &self,
+        request: Request<FindValueRequest>,
+    ) -> Result<Response<FindValueResponse>, Status> {
         // Extract the key from the request
-        let key: [u8; 20] = request.get_ref().key.clone().try_into()
+        let key: [u8; 20] = request
+            .get_ref()
+            .key
+            .clone()
+            .try_into()
             .map_err(|_| Status::invalid_argument("Invalid ID length"))?;
-    
+
         // Scope 1: Read lock to try to get the value
         if let Some(value) = {
             let routing_table = self.routing_table.read().await;
@@ -152,13 +180,13 @@ impl Kademlia for MyKademliaService {
             };
             return Ok(Response::new(reply));
         }
-    
+
         // Scope 2: Read lock to get closest nodes (value not found above)
         let closest_nodes = {
             let routing_table = self.routing_table.read().await;
             routing_table.get_closest_k_nodes(&key, MAX_BUCKET_SIZE)
         };
-    
+
         // Convert closest nodes into protobuf format
         let nodes: Vec<communication::Node> = closest_nodes
             .into_iter()
@@ -168,27 +196,29 @@ impl Kademlia for MyKademliaService {
                 port: node.get_port() as u32,
             })
             .collect();
-    
+
         // Scope 3: Write lock to add new node to the routing table
         {
-            let node = routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
-    
+            let node =
+                routing_table::node::Node::from_proto(request.get_ref().node.as_ref().unwrap());
+
             update_routing_table_with_node(
                 &self.routing_table,
                 node.get_id().clone(),
                 node.get_ip(),
                 node.get_port(),
-            ).await;
+            )
+            .await;
         }
-    
+
         // Return response with closest nodes to continue the search
         let reply = FindValueResponse {
             value: vec![],
             nodes,
         };
-    
+
         Ok(Response::new(reply))
-    }    
+    }
 }
 
 // This function starts the Kademlia server, this will process all calls made to it and update routing table
@@ -250,7 +280,8 @@ pub async fn join_kademlia_network(
         *node.get_id(),
         node.get_ip(),
         node.get_port(),
-    ).await;
+    )
+    .await;
 
     // Refresh the routing table
     refresh_routing_table(routing_table.clone()).await;
@@ -258,20 +289,29 @@ pub async fn join_kademlia_network(
     Ok(())
 }
 
-
-async fn update_routing_table_with_node(routing_table: &RwLock<routing_table::RoutingTable>, id: [u8; 20], ip: String, port: u16,) {
+async fn update_routing_table_with_node(
+    routing_table: &RwLock<routing_table::RoutingTable>,
+    id: [u8; 20],
+    ip: String,
+    port: u16,
+) {
     let new_node = routing_table::node::Node::with_id(id, ip, port);
     let mut routing_table = routing_table.write().await;
     routing_table.add_node(new_node);
     println!("Added node with ID to Table: {:?}", hex::encode(id));
 }
 
-
 pub async fn store_value_dht(
     routing_table: &RwLock<routing_table::RoutingTable>,
     key: [u8; 20],
     value: Vec<u8>,
 ) {
+    // Store in own routing table
+    {
+        let mut routing_table = routing_table.write().await;
+        routing_table.store(key, value.clone());
+    }
+
     // Use a single read lock to get the current node and K-closest nodes
     let (curr_node, k_closest) = {
         let routing_table = routing_table.read().await;
@@ -284,10 +324,10 @@ pub async fn store_value_dht(
     // Iterate over the k-closest nodes and send the value to each node
     for node in k_closest {
         // Create a new Kademlia client
-        
+
         let uri = format!("http://[{}]:{}", node.get_ip(), node.get_port());
         let mut client = KademliaClient::connect(uri).await.unwrap();
-            
+
         // Send the value to the node
         let request = tonic::Request::new(StoreRequest {
             node: Some(curr_node.to_proto()),
@@ -297,10 +337,18 @@ pub async fn store_value_dht(
 
         match client.store(request).await {
             Ok(response) => {
-                println!("Stored value on node with ID: {:?}, Response: {:?}", hex::encode(node.get_id()), response.into_inner().message);
+                println!(
+                    "Stored value on node with ID: {:?}, Response: {:?}",
+                    hex::encode(node.get_id()),
+                    response.into_inner().message
+                );
             }
             Err(e) => {
-                println!("Failed to store value on node with ID: {:?}, Error: {:?}", hex::encode(node.get_id()), e);
+                println!(
+                    "Failed to store value on node with ID: {:?}, Error: {:?}",
+                    hex::encode(node.get_id()),
+                    e
+                );
             }
         }
     }
@@ -347,7 +395,7 @@ pub async fn find_value_dht(
 
                     let request = tonic::Request::new(FindValueRequest {
                         key: key.to_vec(),
-                        node: Some(curr_node.to_proto()), 
+                        node: Some(curr_node.to_proto()),
                     });
 
                     client.find_value(request).await.ok()
@@ -394,10 +442,7 @@ pub async fn find_value_dht(
     None
 }
 
-pub async fn refresh_bucket(
-    routing_table: &RwLock<routing_table::RoutingTable>,
-    bucket_index: u8,
-) {
+pub async fn refresh_bucket(routing_table: &RwLock<routing_table::RoutingTable>, bucket_index: u8) {
     // Get curr_node
     let curr_node = Arc::new({
         let rt = routing_table.read().await;
@@ -409,13 +454,18 @@ pub async fn refresh_bucket(
         routing_table.get_k_bucket_map().get(&bucket_index).cloned()
     };
 
-
-
     if let Some(bucket) = bucket {
         if let Some(random_node) = bucket.get_random_node() {
-            let random_id = routing_table::node_id::generate_random_id_near_distance(curr_node.get_id(), bucket_index);
+            let random_id = routing_table::node_id::generate_random_id_near_distance(
+                curr_node.get_id(),
+                bucket_index,
+            );
 
-            let uri = format!("http://[{}]:{}", random_node.get_ip(), random_node.get_port());
+            let uri = format!(
+                "http://[{}]:{}",
+                random_node.get_ip(),
+                random_node.get_port()
+            );
             if let Ok(mut client) = KademliaClient::connect(uri.clone()).await {
                 let request = tonic::Request::new(FindNodeRequest {
                     key: random_id,
@@ -454,7 +504,6 @@ pub async fn refresh_bucket(
         eprintln!("Bucket {} not found", bucket_index);
     }
 }
-
 
 pub async fn refresh_routing_table(routing_table: Arc<RwLock<routing_table::RoutingTable>>) {
     let buckets = routing_table.read().await.get_k_bucket_map().clone();

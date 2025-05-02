@@ -1,11 +1,16 @@
 use egui::Ui;
 
+use crate::auction::Auction;
+
 #[derive(Default)]
-pub struct AuctionScreen {}
+pub struct AuctionScreen {
+    auction_list: Vec<Auction>,
+}
 
 pub enum AuctionScreenEvent {
     Create,
     Back,
+    GetAuctions,
 }
 
 impl AuctionScreen {
@@ -25,8 +30,30 @@ impl AuctionScreen {
                     result = Some(AuctionScreenEvent::Back);
                 }
             });
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button("Get Auctions").clicked() {
+                    result = Some(AuctionScreenEvent::GetAuctions);
+                }
+            });
+            ui.add_space(10.0);
+            ui.group(|ui| {
+                ui.label("Auctions:");
+                for auction in &self.auction_list {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Auction ID: {}", auction.id));
+                        ui.label(format!("Item: {}", auction.item_name));
+                        ui.label(format!("Starting Price: {}", auction.starting_price));
+                        ui.label(format!("End Time: {}", auction.ending_time));
+                    });
+                }
+            });
         });
 
         result
+    }
+
+    pub fn refresh_auctions(&mut self, auctions: Vec<Auction>) {
+        self.auction_list = auctions;
     }
 }

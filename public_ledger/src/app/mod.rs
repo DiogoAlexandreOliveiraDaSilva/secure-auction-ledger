@@ -5,6 +5,7 @@ use crate::kademlia::find_value_dht;
 use crate::kademlia::store_value_dht;
 use crate::routing_table;
 use eframe::{App, Frame, egui};
+use screens::auction_screen::AuctionScreenEvent;
 use screens::join_screen::JoinScreen;
 use screens::menu_screen::MenuScreen;
 use screens::menu_screen::MenuScreenEvent;
@@ -37,6 +38,7 @@ pub struct AuctionApp {
     create_screen: CreateScreen,
     result_string: Arc<Mutex<String>>,
     latest_auction: Arc<Mutex<Auction>>,
+    auction_list: Arc<Mutex<Vec<Auction>>>,
 }
 
 impl AuctionApp {
@@ -52,6 +54,7 @@ impl AuctionApp {
             create_screen: CreateScreen::default(),
             result_string: Arc::new(Mutex::new("".to_string())),
             latest_auction: Arc::new(Mutex::new(Auction::default())),
+            auction_list: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -199,13 +202,73 @@ impl App for AuctionApp {
                     }
                 }
                 AppState::Auction => {
+                    let auction_list = self.auction_list.try_lock().unwrap(); // Lock to read the auction list
+                    self.auction_screen.refresh_auctions(auction_list.clone());
                     if let Some(event) = self.auction_screen.ui(ui) {
                         match event {
-                            screens::auction_screen::AuctionScreenEvent::Create => {
+                            AuctionScreenEvent::Create => {
                                 self.state = AppState::Create;
                             }
-                            screens::auction_screen::AuctionScreenEvent::Back => {
+                            AuctionScreenEvent::Back => {
                                 self.state = AppState::Menu;
+                            }
+                            AuctionScreenEvent::GetAuctions => {
+                                // Get latest auction id
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let latest_auction = self.latest_auction.clone();
+                                tokio::spawn({
+                                    let routing_table = routing_table.clone(); // Clone for async task
+                                    let latest_auction = latest_auction.clone(); // Clone for async task
+
+                                    async move {
+                                        let hash = kademlia::string_to_hash_key("last_auction"); // Predefined key
+                                        let value = find_value_dht(&routing_table, hash).await;
+                                        let mut latest_auction = latest_auction.lock().await; // Lock to update the result string
+
+                                        match value {
+                                            Some(bytes) => {
+                                                *latest_auction = Auction::deserialized(
+                                                    from_utf8(&bytes).unwrap(),
+                                                );
+                                                println!("Auction found: {:?}", latest_auction); // Debugging
+                                            }
+                                            None => {
+                                                println!("Auction not found"); // Debugging
+                                            }
+                                        }
+                                    }
+                                });
+
+                                // Get all auctions
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let auction_list = self.auction_list.clone();
+                                tokio::spawn({
+                                    let routing_table = routing_table.clone(); // Clone for async task
+                                    let auction_list = auction_list.clone(); // Clone for async task
+
+                                    async move {
+                                        let mut auctions = Vec::new();
+                                        for i in 0..=latest_auction.lock().await.id {
+                                            let hash = kademlia::string_to_hash_key(
+                                                &("auction:".to_string() + &i.to_string()),
+                                            );
+                                            let value = find_value_dht(&routing_table, hash).await;
+                                            match value {
+                                                Some(bytes) => {
+                                                    let auction = Auction::deserialized(
+                                                        from_utf8(&bytes).unwrap(),
+                                                    );
+                                                    auctions.push(auction);
+                                                }
+                                                None => {
+                                                    println!("Auction not found"); // Debugging
+                                                }
+                                            }
+                                        }
+                                        let mut auction_list = auction_list.lock().await; // Lock to update the result string
+                                        *auction_list = auctions;
+                                    }
+                                });
                             }
                         }
                     }
@@ -257,7 +320,7 @@ impl App for AuctionApp {
                                     })
                                 });
 
-                                // Create Auction ID
+                                // Create Auction
                                 let auction = Auction::new_with_duration(
                                     auction_id,
                                     item_name,
@@ -265,7 +328,36 @@ impl App for AuctionApp {
                                     duration_hours,
                                 );
 
-                                println!("Auction created: {:?}", auction);
+                                // Store Auction
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let routing_table_clone = routing_table.clone();
+                                let hash = kademlia::string_to_hash_key(
+                                    &("auction:".to_string() + &auction_id.to_string()),
+                                );
+                                let auction_clone = auction.clone();
+                                tokio::spawn(async move {
+                                    store_value_dht(
+                                        &routing_table_clone,
+                                        hash,
+                                        auction_clone.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                });
+
+                                // Update Latest Auction
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let routing_table_clone = routing_table.clone();
+                                let hash =
+                                    kademlia::string_to_hash_key(&("last_auction".to_string()));
+                                tokio::spawn(async move {
+                                    store_value_dht(
+                                        &routing_table_clone,
+                                        hash,
+                                        auction.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                });
+                                self.state = AppState::Auction;
                             }
                         }
                     }
