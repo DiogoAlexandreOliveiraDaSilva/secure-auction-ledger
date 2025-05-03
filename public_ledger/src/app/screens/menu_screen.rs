@@ -14,13 +14,9 @@ pub struct MenuScreen {
 }
 
 pub enum MenuScreenEvent {
-    SubmittedStore {
-        key: String,
-        value: String,
-    },
-    SubmittedSearch {
-        key: String,
-    }
+    SubmittedStore { key: String, value: String },
+    SubmittedSearch { key: String },
+    Auction,
 }
 impl MenuScreen {
     pub fn ui(&mut self, ui: &mut Ui) -> Option<MenuScreenEvent> {
@@ -28,7 +24,7 @@ impl MenuScreen {
 
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
-            ui.heading("Distributed Auction System Menu");
+            ui.heading("Main Menu");
         });
 
         ui.add_space(10.0);
@@ -87,7 +83,13 @@ impl MenuScreen {
                 let value = &self.search_value;
                 ui.label(format!("Search Result: {}", value));
             }
-            
+        });
+
+        ui.add_space(10.0);
+        ui.group(|ui| {
+            if ui.button("Go to Auctions").clicked() {
+                result = Some(MenuScreenEvent::Auction);
+            }
         });
 
         result

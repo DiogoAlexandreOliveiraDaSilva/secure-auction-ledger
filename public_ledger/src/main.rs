@@ -1,17 +1,20 @@
+use app::AuctionApp;
+use kademlia::communication::{FindValueRequest, PingRequest}; // Needed for proper request building
+use kademlia::{
+    MyKademliaService, communication::kademlia_client::KademliaClient,
+    communication::kademlia_server,
+};
 use kademlia::{routing_table, start_kademlia_server};
 use tonic::transport::Server;
-use kademlia::{communication::kademlia_server, MyKademliaService, communication::kademlia_client::KademliaClient};
-use kademlia::communication::{FindValueRequest, PingRequest}; // Needed for proper request building
-use app::AuctionApp;
-
 
 // Tests
 #[cfg(test)]
 mod tests;
 // Imports
+mod app;
+mod auction;
 mod blockchain;
 mod kademlia;
-mod app;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
