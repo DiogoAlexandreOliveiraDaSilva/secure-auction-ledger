@@ -17,6 +17,7 @@ pub enum MenuScreenEvent {
     SubmittedStore { key: String, value: String },
     SubmittedSearch { key: String },
     Auction,
+    Block,
 }
 impl MenuScreen {
     pub fn ui(&mut self, ui: &mut Ui) -> Option<MenuScreenEvent> {
@@ -89,6 +90,13 @@ impl MenuScreen {
         ui.group(|ui| {
             if ui.button("Go to Auctions").clicked() {
                 result = Some(MenuScreenEvent::Auction);
+            }
+        });
+
+        ui.add_space(10.0);
+        ui.group(|ui| {
+            if ui.button("Go to Blockchain").clicked() {
+                result = Some(MenuScreenEvent::Block);
             }
         });
 

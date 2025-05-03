@@ -6,6 +6,7 @@ use crate::kademlia::store_value_dht;
 use crate::routing_table;
 use eframe::{App, Frame, egui};
 use screens::auction_screen::AuctionScreenEvent;
+use screens::block_screen::BlockScreen;
 use screens::join_screen::JoinScreen;
 use screens::menu_screen::MenuScreen;
 use screens::menu_screen::MenuScreenEvent;
@@ -36,6 +37,7 @@ pub struct AuctionApp {
     menu_screen: MenuScreen,
     auction_screen: AuctionScreen,
     create_screen: CreateScreen,
+    block_screen: BlockScreen,
     result_string: Arc<Mutex<String>>,
     latest_auction: Arc<Mutex<Auction>>,
     auction_list: Arc<Mutex<Vec<Auction>>>,
@@ -52,6 +54,7 @@ impl AuctionApp {
             menu_screen: MenuScreen::default(),
             auction_screen: AuctionScreen::default(),
             create_screen: CreateScreen::default(),
+            block_screen: BlockScreen::default(),
             result_string: Arc::new(Mutex::new("".to_string())),
             latest_auction: Arc::new(Mutex::new(Auction::default())),
             auction_list: Arc::new(Mutex::new(Vec::new())),
@@ -197,6 +200,9 @@ impl App for AuctionApp {
                             }
                             MenuScreenEvent::Auction => {
                                 self.state = AppState::Auction;
+                            }
+                            MenuScreenEvent::Block => {
+                                self.state = AppState::Block;
                             }
                         }
                     }
@@ -358,6 +364,15 @@ impl App for AuctionApp {
                                     .await;
                                 });
                                 self.state = AppState::Auction;
+                            }
+                        }
+                    }
+                }
+                AppState::Block => {
+                    if let Some(event) = self.block_screen.ui(ui) {
+                        match event {
+                            screens::block_screen::BlockScreenEvent::Back => {
+                                self.state = AppState::Menu;
                             }
                         }
                     }

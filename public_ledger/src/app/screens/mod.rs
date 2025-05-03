@@ -1,4 +1,5 @@
 pub(crate) mod auction_screen;
+pub(crate) mod block_screen;
 pub(crate) mod create_screen;
 pub(crate) mod initial_screen;
 pub(crate) mod join_screen;
@@ -12,4 +13,5 @@ pub enum AppState {
     Menu,
     Auction,
     Create,
+    Block,
 }
