@@ -33,12 +33,27 @@ impl BlockHeader {
         self.nonce = nonce;
     }
 
-    pub fn new(prev_hash: String, difficulty:u64) -> BlockHeader {
+    pub fn new(prev_hash: String, difficulty: u64) -> BlockHeader {
         BlockHeader {
             prev_hash,
             nonce: 0,
             difficulty,
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        }
+    }
+
+    pub fn genesis() -> BlockHeader {
+        BlockHeader {
+            prev_hash: "0".to_string(),
+            nonce: 0,
+            difficulty: 0,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         }
     }
 }

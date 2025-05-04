@@ -1,5 +1,6 @@
 use crate::auction;
 // main.rs
+use crate::blockchain;
 use crate::kademlia;
 use crate::kademlia::find_value_dht;
 use crate::kademlia::store_value_dht;
@@ -41,6 +42,7 @@ pub struct AuctionApp {
     result_string: Arc<Mutex<String>>,
     latest_auction: Arc<Mutex<Auction>>,
     auction_list: Arc<Mutex<Vec<Auction>>>,
+    blockchain: Arc<Mutex<blockchain::chain::Chain>>,
 }
 
 impl AuctionApp {
@@ -58,6 +60,7 @@ impl AuctionApp {
             result_string: Arc::new(Mutex::new("".to_string())),
             latest_auction: Arc::new(Mutex::new(Auction::default())),
             auction_list: Arc::new(Mutex::new(Vec::new())),
+            blockchain: Arc::new(Mutex::new(blockchain::chain::Chain::new())),
         }
     }
 
@@ -121,6 +124,32 @@ impl App for AuctionApp {
                                 self.state = AppState::Join;
                             }
                             SelectionScreenEvent::Create => {
+                                // Add Genesis Block to Blockchain
+                                let genesis_block = blockchain::block::Block::genesis();
+                                {
+                                    let mut blockchain = tokio::task::block_in_place(|| {
+                                        let rt = tokio::runtime::Handle::current();
+                                        rt.block_on(self.blockchain.lock())
+                                    });
+                                    blockchain.add_block(genesis_block);
+                                }
+
+                                // Store Genesis Block
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let routing_table_clone = routing_table.clone();
+                                let hash = kademlia::string_to_hash_key("genesis_block");
+                                let blockchain_clone = self.blockchain.clone();
+                                tokio::spawn(async move {
+                                    let blockchain = blockchain_clone.lock().await;
+                                    store_value_dht(
+                                        &routing_table_clone,
+                                        hash,
+                                        blockchain.get_last_block().get_hash().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                });
+
+                                // Update Node Info
                                 self.update_menu_screen_info();
                                 self.state = AppState::Menu;
                             }

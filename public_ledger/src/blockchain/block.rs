@@ -1,6 +1,6 @@
 //! Block structure
-pub(crate) mod block_header;
 pub(crate) mod block_body;
+pub(crate) mod block_header;
 use ring::digest;
 
 // A block is a structure that contains a header and a body
@@ -8,11 +8,10 @@ use ring::digest;
 // The body contains the transactions
 pub(crate) struct Block {
     header: block_header::BlockHeader,
-    body: block_body::BlockBody
+    body: block_body::BlockBody,
 }
 
 impl Block {
-
     // Creates block hash based on it's information
     pub fn get_hash(&self) -> String {
         let mut hash = digest::Context::new(&digest::SHA512);
@@ -39,10 +38,14 @@ impl Block {
     pub fn mine(&mut self) -> u64 {
         loop {
             if self.is_valid() {
-                println!("Block mined with nonce: {}, hash: {}", self.header.get_nonce(), self.get_hash());
+                println!(
+                    "Block mined with nonce: {}, hash: {}",
+                    self.header.get_nonce(),
+                    self.get_hash()
+                );
                 return self.header.get_nonce();
             }
-            
+
             self.header.set_nonce(self.header.get_nonce() + 1);
         }
     }
@@ -55,9 +58,17 @@ impl Block {
     }
 
     pub fn new(header: block_header::BlockHeader, body: block_body::BlockBody) -> Block {
+        Block { header, body }
+    }
+
+    pub fn genesis() -> Block {
         Block {
-            header,
-            body
+            header: block_header::BlockHeader::genesis(),
+            body: block_body::BlockBody::new(String::new()),
         }
+    }
+
+    pub fn deserialized(header: block_header::BlockHeader, body: block_body::BlockBody) -> Block {
+        Block { header, body }
     }
 }
