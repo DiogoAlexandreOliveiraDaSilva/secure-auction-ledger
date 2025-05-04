@@ -1,5 +1,6 @@
 use super::block::Block;
 
+#[derive(Default, Clone)]
 pub(crate) struct Chain {
     blocks: Vec<Block>,
 }

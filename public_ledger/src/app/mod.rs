@@ -1,10 +1,13 @@
 use crate::auction;
 // main.rs
 use crate::blockchain;
+use crate::blockchain::block::Block;
+use crate::blockchain::chain::Chain;
 use crate::kademlia;
 use crate::kademlia::find_value_dht;
 use crate::kademlia::store_value_dht;
-use crate::routing_table;
+use crate::kademlia::string_to_hash_key;
+use crate::routing_table::{self, RoutingTable};
 use eframe::{App, Frame, egui};
 use screens::auction_screen::AuctionScreenEvent;
 use screens::block_screen::BlockScreen;
@@ -144,7 +147,30 @@ impl App for AuctionApp {
                                     store_value_dht(
                                         &routing_table_clone,
                                         hash,
-                                        blockchain.get_last_block().get_hash().as_bytes().to_vec(),
+                                        blockchain
+                                            .get_last_block()
+                                            .serialized()
+                                            .as_bytes()
+                                            .to_vec(),
+                                    )
+                                    .await;
+                                });
+
+                                // Store Latest Block
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let routing_table_clone = routing_table.clone();
+                                let hash = kademlia::string_to_hash_key("latest_block");
+                                let blockchain_clone = self.blockchain.clone();
+                                tokio::spawn(async move {
+                                    let blockchain = blockchain_clone.lock().await;
+                                    store_value_dht(
+                                        &routing_table_clone,
+                                        hash,
+                                        blockchain
+                                            .get_last_block()
+                                            .serialized()
+                                            .as_bytes()
+                                            .to_vec(),
                                     )
                                     .await;
                                 });
@@ -399,9 +425,34 @@ impl App for AuctionApp {
                 }
                 AppState::Block => {
                     if let Some(event) = self.block_screen.ui(ui) {
+                        let chain = tokio::task::block_in_place(|| {
+                            let rt = tokio::runtime::Handle::current();
+                            rt.block_on(self.blockchain.lock()).clone()
+                        });
+                        self.block_screen.refresh_chain(chain);
                         match event {
                             screens::block_screen::BlockScreenEvent::Back => {
                                 self.state = AppState::Menu;
+                            }
+                            screens::block_screen::BlockScreenEvent::GetChain => {
+                                println!("Getting chain");
+                                let current_chain = blockchain::chain::Chain::new();
+
+                                // Fetch the full chain
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let routing_table_clone = routing_table.clone();
+                                let blockchain_clone = self.blockchain.clone();
+                                tokio::spawn(async move {
+                                    if let Some(chain) =
+                                        fetch_full_chain(&routing_table_clone).await
+                                    {
+                                        let mut blockchain = blockchain_clone.lock().await;
+                                        *blockchain = chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain");
+                                    }
+                                });
                             }
                         }
                     }
@@ -409,4 +460,42 @@ impl App for AuctionApp {
             }
         });
     }
+}
+
+pub async fn fetch_full_chain(routing_table: &RwLock<RoutingTable>) -> Option<Chain> {
+    let mut chain = Chain::new();
+    let mut current_hash = string_to_hash_key("latest_block");
+
+    loop {
+        // Fetch the block from DHT
+        let value = find_value_dht(routing_table, current_hash).await;
+
+        match value {
+            Some(bytes) => {
+                let block_str = std::str::from_utf8(&bytes).ok()?;
+                let block = Block::deserialized(block_str);
+
+                // Add block to the chain
+                chain.add_block(block.clone());
+
+                // If we hit the genesis block, we stop
+                if block.header.get_parent_hash() == "0" {
+                    break;
+                }
+
+                // Move to the previous block
+                current_hash = {
+                    let parent_hash_str = &block.header.get_parent_hash()[0..40]; // Assuming the parent hash is a hex string
+                    let decoded = hex::decode(parent_hash_str).expect("Invalid hex in parent hash");
+                    decoded.try_into().expect("Parent hash is not 20 bytes")
+                };
+            }
+            None => {
+                println!("Block not found for hash {:?}", hex::encode(current_hash));
+                return None; // Early exit if something is broken
+            }
+        }
+    }
+
+    Some(chain)
 }

@@ -1,6 +1,10 @@
 //!Block Header
 
+use serde::{Deserialize, Serialize};
+
 // A block header contains metadata about the block
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockHeader {
     // prev_hash is the hash of the previous block in the chain
     prev_hash: String,

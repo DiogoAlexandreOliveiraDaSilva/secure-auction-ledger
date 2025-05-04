@@ -2,12 +2,15 @@
 pub(crate) mod block_body;
 pub(crate) mod block_header;
 use ring::digest;
+use serde::{Deserialize, Serialize};
 
 // A block is a structure that contains a header and a body
 // The header contains metadata about the block
 // The body contains the transactions
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Block {
-    header: block_header::BlockHeader,
+    pub header: block_header::BlockHeader,
     body: block_body::BlockBody,
 }
 
@@ -68,7 +71,11 @@ impl Block {
         }
     }
 
-    pub fn deserialized(header: block_header::BlockHeader, body: block_body::BlockBody) -> Block {
-        Block { header, body }
+    pub fn deserialized(serialized: &str) -> Self {
+        serde_json::from_str(serialized).unwrap()
+    }
+
+    pub fn serialized(&self) -> String {
+        serde_json::to_string(self).unwrap()
     }
 }
