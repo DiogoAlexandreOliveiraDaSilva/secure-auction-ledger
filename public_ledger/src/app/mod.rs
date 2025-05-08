@@ -425,16 +425,16 @@ impl App for AuctionApp {
                 }
                 AppState::Block => {
                     if let Some(event) = self.block_screen.ui(ui) {
-                        let chain = tokio::task::block_in_place(|| {
-                            let rt = tokio::runtime::Handle::current();
-                            rt.block_on(self.blockchain.lock()).clone()
-                        });
-                        self.block_screen.refresh_chain(chain);
                         match event {
                             screens::block_screen::BlockScreenEvent::Back => {
                                 self.state = AppState::Menu;
                             }
                             screens::block_screen::BlockScreenEvent::GetChain => {
+                                let chain = tokio::task::block_in_place(|| {
+                                    let rt = tokio::runtime::Handle::current();
+                                    rt.block_on(self.blockchain.lock()).clone()
+                                });
+                                self.block_screen.refresh_chain(chain);
                                 println!("Getting chain");
                                 let current_chain = blockchain::chain::Chain::new();
 
