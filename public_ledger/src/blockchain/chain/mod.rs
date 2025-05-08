@@ -16,11 +16,12 @@ impl Chain {
         self.blocks.push(block);
     }
 
-    // Returns the last block in the chain
-    pub fn get_last_block(&self) -> &Block {
-        self.blocks.last().unwrap()
+    // Returns the first block in the chain (genesis block)
+    pub fn get_first_block(&self) -> &Block {
+        self.blocks
+            .get(0)
+            .unwrap_or_else(|| panic!("Chain is empty, no genesis block found."))
     }
-
     // Returns the entire chain
     pub fn get_chain(&self) -> &Vec<Block> {
         &self.blocks

@@ -11,25 +11,25 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Block {
     pub header: block_header::BlockHeader,
-    body: block_body::BlockBody,
+    pub body: block_body::BlockBody,
 }
 
 impl Block {
     // Creates block hash based on it's information
-    pub fn get_hash(&self) -> String {
+    pub fn get_hash(&self) -> Vec<u8> {
         let mut hash = digest::Context::new(&digest::SHA512);
-        hash.update(self.header.get_parent_hash().as_bytes());
+        hash.update(&self.header.get_parent_hash());
         hash.update(self.header.get_timestamp().to_string().as_bytes());
-        hash.update(self.body.get_transactions().as_bytes());
+        hash.update(self.body.get_transactions());
         hash.update(self.header.get_nonce().to_string().as_bytes());
         hash.update(self.header.get_difficulty().to_string().as_bytes());
         let digest_result = hash.finish();
 
-        digest_result
-            .as_ref()
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect()
+        let mut hash_vec = Vec::new();
+        for byte in digest_result.as_ref() {
+            hash_vec.push(*byte);
+        }
+        hash_vec
     }
 
     // Returns the block's nonce
@@ -44,7 +44,7 @@ impl Block {
                 println!(
                     "Block mined with nonce: {}, hash: {}",
                     self.header.get_nonce(),
-                    self.get_hash()
+                    hex::encode(self.get_hash())
                 );
                 return self.header.get_nonce();
             }
@@ -57,7 +57,8 @@ impl Block {
     pub fn is_valid(&self) -> bool {
         let hash = self.get_hash();
         let target = "0".repeat(self.header.get_difficulty() as usize);
-        hash.starts_with(&target)
+        let hash_str = hex::encode(hash);
+        hash_str.starts_with(&target)
     }
 
     pub fn new(header: block_header::BlockHeader, body: block_body::BlockBody) -> Block {
@@ -67,7 +68,7 @@ impl Block {
     pub fn genesis() -> Block {
         Block {
             header: block_header::BlockHeader::genesis(),
-            body: block_body::BlockBody::new(String::new()),
+            body: block_body::BlockBody::new(vec![]),
         }
     }
 

@@ -127,55 +127,55 @@ impl App for AuctionApp {
                                 self.state = AppState::Join;
                             }
                             SelectionScreenEvent::Create => {
-                                // Add Genesis Block to Blockchain
-                                let genesis_block = blockchain::block::Block::genesis();
-                                {
-                                    let mut blockchain = tokio::task::block_in_place(|| {
-                                        let rt = tokio::runtime::Handle::current();
-                                        rt.block_on(self.blockchain.lock())
-                                    });
-                                    blockchain.add_block(genesis_block);
-                                }
-
-                                // Store Genesis Block
+                                let blockchain = self.blockchain.clone();
                                 let routing_table = self.routing_table.clone().unwrap();
-                                let routing_table_clone = routing_table.clone();
-                                let hash = kademlia::string_to_hash_key("genesis_block");
-                                let blockchain_clone = self.blockchain.clone();
+
                                 tokio::spawn(async move {
-                                    let blockchain = blockchain_clone.lock().await;
+                                    // Add Genesis Block
+                                    let genesis_block = blockchain::block::Block::genesis();
+
+                                    {
+                                        let mut blockchain = blockchain.lock().await;
+                                        blockchain.add_block(genesis_block.clone());
+                                    }
+
+                                    let clone_genesis_block = genesis_block.clone();
+
+                                    // Store Genesis Block under its truncated hash
+                                    let truncated_hash = &genesis_block.get_hash()[0..20];
+                                    let block_dht_key =
+                                        kademlia::string_to_hash_key(&hex::encode(truncated_hash));
+
+                                    let genesis_serialized =
+                                        genesis_block.serialized().as_bytes().to_vec();
+
+                                    let routing_table_clone = routing_table.clone();
                                     store_value_dht(
                                         &routing_table_clone,
-                                        hash,
-                                        blockchain
-                                            .get_last_block()
-                                            .serialized()
-                                            .as_bytes()
-                                            .to_vec(),
+                                        block_dht_key,
+                                        genesis_serialized,
                                     )
                                     .await;
-                                });
+                                    println!(
+                                        "Genesis block stored under key {:?}",
+                                        hex::encode(truncated_hash)
+                                    );
 
-                                // Store Latest Block
-                                let routing_table = self.routing_table.clone().unwrap();
-                                let routing_table_clone = routing_table.clone();
-                                let hash = kademlia::string_to_hash_key("latest_block");
-                                let blockchain_clone = self.blockchain.clone();
-                                tokio::spawn(async move {
-                                    let blockchain = blockchain_clone.lock().await;
+                                    // Store Latest Block pointer
+                                    let latest_block_key =
+                                        kademlia::string_to_hash_key("latest_block");
+
+                                    let blockchain = blockchain.lock().await;
+
                                     store_value_dht(
-                                        &routing_table_clone,
-                                        hash,
-                                        blockchain
-                                            .get_last_block()
-                                            .serialized()
-                                            .as_bytes()
-                                            .to_vec(),
+                                        &routing_table,
+                                        latest_block_key,
+                                        clone_genesis_block.serialized().as_bytes().to_vec(),
                                     )
                                     .await;
+                                    println!("Latest block updated");
                                 });
 
-                                // Update Node Info
                                 self.update_menu_screen_info();
                                 self.state = AppState::Menu;
                             }
@@ -454,6 +454,75 @@ impl App for AuctionApp {
                                     }
                                 });
                             }
+                            screens::block_screen::BlockScreenEvent::MineBlock { transaction } => {
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
+
+                                tokio::spawn(async move {
+                                    //Fetch the latest chain
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table).await
+                                    {
+                                        let mut blockchain_lock = blockchain.lock().await;
+                                        *blockchain_lock = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain, aborting mine");
+                                        return;
+                                    }
+
+                                    //Prepare the new block
+                                    let mut blockchain_lock = blockchain.lock().await;
+                                    let last_block_hash =
+                                        blockchain_lock.get_first_block().get_hash();
+
+                                    let header = blockchain::block::block_header::BlockHeader::new(
+                                        last_block_hash.into(),
+                                    );
+                                    let body = blockchain::block::block_body::BlockBody::new(
+                                        transaction.as_bytes().to_vec(),
+                                    );
+                                    let mut block = blockchain::block::Block::new(header, body);
+
+                                    // Mine the block
+                                    block.mine();
+
+                                    // Add block to local blockchain
+                                    blockchain_lock.add_block(block.clone());
+
+                                    drop(blockchain_lock); // Release lock before DHT operations
+
+                                    // Store the block in the DHT under its truncated hash
+                                    let truncated_hash = &block.get_hash()[0..20]; // First 20 bytes
+                                    let block_dht_key =
+                                        kademlia::string_to_hash_key(&hex::encode(truncated_hash));
+
+                                    store_value_dht(
+                                        &routing_table,
+                                        block_dht_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+
+                                    println!(
+                                        "Block stored under key {:?}",
+                                        hex::encode(truncated_hash)
+                                    );
+
+                                    // Update 'latest_block' pointer in DHT
+                                    let latest_block_key =
+                                        kademlia::string_to_hash_key("latest_block");
+
+                                    store_value_dht(
+                                        &routing_table,
+                                        latest_block_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+
+                                    println!("Latest block updated");
+                                });
+                            }
                         }
                     }
                 }
@@ -479,15 +548,16 @@ pub async fn fetch_full_chain(routing_table: &RwLock<RoutingTable>) -> Option<Ch
                 chain.add_block(block.clone());
 
                 // If we hit the genesis block, we stop
-                if block.header.get_parent_hash() == "0" {
+                if block.header.get_parent_hash() == vec![0; 64] {
+                    println!("Genesis block reached");
                     break;
                 }
 
                 // Move to the previous block
                 current_hash = {
-                    let parent_hash_str = &block.header.get_parent_hash()[0..40]; // Assuming the parent hash is a hex string
-                    let decoded = hex::decode(parent_hash_str).expect("Invalid hex in parent hash");
-                    decoded.try_into().expect("Parent hash is not 20 bytes")
+                    let mut hash = block.header.get_parent_hash();
+                    hash.truncate(20); // Truncate to 20 bytes
+                    string_to_hash_key(&hex::encode(hash))
                 };
             }
             None => {

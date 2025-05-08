@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockHeader {
     // prev_hash is the hash of the previous block in the chain
-    prev_hash: String,
+    prev_hash: Vec<u8>,
     // nonce is a number that miners increment in order to find a valid hash
     nonce: u64,
     // difficulty is the number of zeros that the hash of the block should start with for it to be valid
@@ -17,7 +17,7 @@ pub struct BlockHeader {
 }
 
 impl BlockHeader {
-    pub fn get_parent_hash(&self) -> String {
+    pub fn get_parent_hash(&self) -> Vec<u8> {
         self.prev_hash.clone()
     }
 
@@ -37,11 +37,11 @@ impl BlockHeader {
         self.nonce = nonce;
     }
 
-    pub fn new(prev_hash: String, difficulty: u64) -> BlockHeader {
+    pub fn new(prev_hash: Vec<u8>) -> BlockHeader {
         BlockHeader {
             prev_hash,
             nonce: 0,
-            difficulty,
+            difficulty: 1,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -51,7 +51,7 @@ impl BlockHeader {
 
     pub fn genesis() -> BlockHeader {
         BlockHeader {
-            prev_hash: "0".to_string(),
+            prev_hash: vec![0; 64],
             nonce: 0,
             difficulty: 0,
             timestamp: std::time::SystemTime::now()

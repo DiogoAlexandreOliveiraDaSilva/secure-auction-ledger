@@ -5,11 +5,13 @@ use crate::blockchain::{self, chain::Chain};
 #[derive(Default)]
 pub struct BlockScreen {
     pub chain: Chain,
+    pub transaction: String,
 }
 
 pub enum BlockScreenEvent {
     GetChain,
     Back,
+    MineBlock { transaction: String },
     // Add other events as needed
 }
 
@@ -27,8 +29,22 @@ impl BlockScreen {
             ui.label("Blocks:");
             for block in self.chain.get_chain() {
                 ui.horizontal(|ui| {
-                    ui.label(format!("Block Hash: {}", &block.get_hash()[0..20]));
-                    ui.label(format!("Prev Block: {}", block.header.get_parent_hash()));
+                    ui.label(format!(
+                        "Block Hash: {}",
+                        &hex::encode(block.get_hash())
+                            .get(0..20)
+                            .unwrap_or(&hex::encode(block.get_hash()))
+                    ));
+                    ui.label(format!(
+                        "Prev Block: {}",
+                        hex::encode(block.header.get_parent_hash())
+                            .get(0..20)
+                            .unwrap_or(&hex::encode(block.header.get_parent_hash()))
+                    ));
+                    ui.label(format!(
+                        "Transaction: {:?}",
+                        String::from_utf8(block.body.get_transactions().clone()).unwrap()
+                    ));
                 });
             }
         });
@@ -43,6 +59,21 @@ impl BlockScreen {
             }
         });
 
+        // Mine Block
+        ui.add_space(10.0);
+        ui.group(|ui| {
+            ui.label("Mine Block:");
+            ui.horizontal(|ui| {
+                ui.label("Transaction:");
+                ui.text_edit_singleline(&mut self.transaction);
+            });
+            ui.add_space(10.0);
+            if ui.button("Mine").clicked() {
+                result = Some(BlockScreenEvent::MineBlock {
+                    transaction: self.transaction.clone(),
+                });
+            }
+        });
         result
     }
 
