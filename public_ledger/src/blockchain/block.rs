@@ -79,4 +79,8 @@ impl Block {
     pub fn serialized(&self) -> String {
         serde_json::to_string(self).unwrap()
     }
+
+    pub fn get_transactions(&self) -> &Vec<u8> {
+        self.body.get_transactions()
+    }
 }

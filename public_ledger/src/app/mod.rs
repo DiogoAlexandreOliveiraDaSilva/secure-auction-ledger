@@ -265,6 +265,10 @@ impl App for AuctionApp {
                 AppState::Auction => {
                     let auction_list = self.auction_list.try_lock().unwrap(); // Lock to read the auction list
                     self.auction_screen.refresh_auctions(auction_list.clone());
+
+                    let chain = self.blockchain.try_lock().unwrap().clone();
+                    self.auction_screen.set_chain(chain);
+
                     if let Some(event) = self.auction_screen.ui(ui) {
                         match event {
                             AuctionScreenEvent::Create => {
@@ -300,7 +304,7 @@ impl App for AuctionApp {
                                     }
                                 });
 
-                                // Get all auctions
+                                // Get all auctions and verify
                                 let routing_table = self.routing_table.clone().unwrap();
                                 let auction_list = self.auction_list.clone();
                                 tokio::spawn({
@@ -328,6 +332,22 @@ impl App for AuctionApp {
                                         }
                                         let mut auction_list = auction_list.lock().await; // Lock to update the result string
                                         *auction_list = auctions;
+                                    }
+                                });
+
+                                // Get Chain
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
+                                let routing_table_clone = routing_table.clone();
+                                tokio::spawn(async move {
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table_clone).await
+                                    {
+                                        let mut blockchain = blockchain.lock().await;
+                                        *blockchain = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain");
                                     }
                                 });
                             }
