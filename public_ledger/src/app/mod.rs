@@ -389,6 +389,8 @@ impl App for AuctionApp {
                                     duration_hours,
                                 );
 
+                                let auction_hash = auction.get_hash();
+
                                 // Store Auction
                                 let routing_table = self.routing_table.clone().unwrap();
                                 let routing_table_clone = routing_table.clone();
@@ -418,6 +420,81 @@ impl App for AuctionApp {
                                     )
                                     .await;
                                 });
+
+                                // Create Auction Signature
+                                let auction_signature = auction::signature::AuctionSignature::new(
+                                    auction_id.to_string(),
+                                    auction_hash,
+                                );
+
+                                // Create Block with Auction Signature as transaction
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
+                                let routing_table_clone = routing_table.clone();
+                                let auction_signature_clone = auction_signature.clone();
+                                tokio::spawn(async move {
+                                    //Fetch the latest chain
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table_clone).await
+                                    {
+                                        let mut blockchain_lock = blockchain.lock().await;
+                                        *blockchain_lock = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain, aborting mine");
+                                        return;
+                                    }
+
+                                    //Prepare the new block
+                                    let mut blockchain_lock = blockchain.lock().await;
+                                    let last_block_hash =
+                                        blockchain_lock.get_first_block().get_hash();
+
+                                    let header = blockchain::block::block_header::BlockHeader::new(
+                                        last_block_hash.into(),
+                                    );
+                                    let body = blockchain::block::block_body::BlockBody::new(
+                                        auction_signature_clone.serialized_to_bytes().unwrap(),
+                                    );
+                                    let mut block = blockchain::block::Block::new(header, body);
+
+                                    // Mine the block
+                                    block.mine();
+
+                                    drop(blockchain_lock); // Release lock before DHT operations
+
+                                    // Store the block in the DHT under its truncated hash
+                                    let truncated_hash = &block.get_hash()[0..20]; // First 20 bytes
+                                    let block_dht_key =
+                                        kademlia::string_to_hash_key(&hex::encode(truncated_hash));
+
+                                    store_value_dht(
+                                        &routing_table,
+                                        block_dht_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+
+                                    println!(
+                                        "Block stored under key {:?}",
+                                        hex::encode(truncated_hash)
+                                    );
+
+                                    // Update 'latest_block' pointer in DHT
+                                    let latest_block_key =
+                                        kademlia::string_to_hash_key("latest_block");
+
+                                    store_value_dht(
+                                        &routing_table,
+                                        latest_block_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+
+                                    println!("Latest block updated");
+                                });
+
+                                // Change state to Auction
                                 self.state = AppState::Auction;
                             }
                         }
@@ -486,9 +563,6 @@ impl App for AuctionApp {
 
                                     // Mine the block
                                     block.mine();
-
-                                    // Add block to local blockchain
-                                    blockchain_lock.add_block(block.clone());
 
                                     drop(blockchain_lock); // Release lock before DHT operations
 

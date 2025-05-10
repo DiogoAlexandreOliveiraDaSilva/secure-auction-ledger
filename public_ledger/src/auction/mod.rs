@@ -1,6 +1,8 @@
 mod bid;
+pub(crate) mod signature;
 
 use bid::Bid;
+use ring::digest::{Context, SHA256};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -64,5 +66,11 @@ impl Auction {
 
     pub fn deserialized(serialized: &str) -> Self {
         serde_json::from_str(serialized).unwrap()
+    }
+
+    pub fn get_hash(&self) -> Vec<u8> {
+        let mut context = Context::new(&SHA256);
+        context.update(self.serialized().as_bytes());
+        context.finish().as_ref().to_vec()
     }
 }
