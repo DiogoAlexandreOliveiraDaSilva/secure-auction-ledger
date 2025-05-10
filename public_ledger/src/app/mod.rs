@@ -10,6 +10,7 @@ use crate::kademlia::string_to_hash_key;
 use crate::routing_table::{self, RoutingTable};
 use eframe::{App, Frame, egui};
 use screens::auction_screen::AuctionScreenEvent;
+use screens::bid_screen::BidScreen;
 use screens::block_screen::BlockScreen;
 use screens::join_screen::JoinScreen;
 use screens::menu_screen::MenuScreen;
@@ -42,6 +43,7 @@ pub struct AuctionApp {
     auction_screen: AuctionScreen,
     create_screen: CreateScreen,
     block_screen: BlockScreen,
+    bid_screen: BidScreen,
     result_string: Arc<Mutex<String>>,
     latest_auction: Arc<Mutex<Auction>>,
     auction_list: Arc<Mutex<Vec<Auction>>>,
@@ -60,6 +62,7 @@ impl AuctionApp {
             auction_screen: AuctionScreen::default(),
             create_screen: CreateScreen::default(),
             block_screen: BlockScreen::default(),
+            bid_screen: BidScreen::default(),
             result_string: Arc::new(Mutex::new("".to_string())),
             latest_auction: Arc::new(Mutex::new(Auction::default())),
             auction_list: Arc::new(Mutex::new(Vec::new())),
@@ -351,6 +354,10 @@ impl App for AuctionApp {
                                     }
                                 });
                             }
+                            AuctionScreenEvent::BidMenu { auction_id } => {
+                                println!("Bid Menu With ID: {}", auction_id);
+                                self.state = AppState::Bid;
+                            }
                         }
                     }
                 }
@@ -406,7 +413,7 @@ impl App for AuctionApp {
                                     auction_id,
                                     item_name,
                                     starting_price,
-                                    duration_hours,
+                                    duration_hours + 1,
                                 );
 
                                 let auction_hash = auction.get_hash();
@@ -616,6 +623,15 @@ impl App for AuctionApp {
 
                                     println!("Latest block updated");
                                 });
+                            }
+                        }
+                    }
+                }
+                AppState::Bid => {
+                    if let Some(event) = self.bid_screen.ui(ui) {
+                        match event {
+                            screens::bid_screen::BidScreenEvent::Back => {
+                                self.state = AppState::Auction;
                             }
                         }
                     }

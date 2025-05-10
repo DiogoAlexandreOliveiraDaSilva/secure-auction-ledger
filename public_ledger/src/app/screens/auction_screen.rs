@@ -13,6 +13,7 @@ pub enum AuctionScreenEvent {
     Create,
     Back,
     GetAuctions,
+    BidMenu { auction_id: u32 },
 }
 
 impl AuctionScreen {
@@ -50,10 +51,22 @@ impl AuctionScreen {
                         ui.label(format!("Auction ID: {}", auction.id));
                         ui.label(format!("Item: {}", auction.item_name));
                         ui.label(format!("Starting Price: {}", auction.starting_price));
-                        ui.label(format!("End Time: {}", auction.ending_time));
+                        ui.label(format!("End Time: {}", auction.get_ending_time_as_string()));
                         // If auction is in verified_auctions list, show "Verified" else "Not Verified"
                         if verified_auctions.iter().any(|a| a.id == auction.id) {
                             ui.colored_label(egui::Color32::GREEN, "Verified");
+                            // Check i finished
+                            if auction.finished() {
+                                ui.colored_label(egui::Color32::RED, "Finished");
+                            } else {
+                                ui.colored_label(egui::Color32::GREEN, "Ongoing");
+                                // Bid Button
+                                if ui.button("Bid").clicked() {
+                                    result = Some(AuctionScreenEvent::BidMenu {
+                                        auction_id: auction.id,
+                                    });
+                                }
+                            }
                         } else {
                             ui.colored_label(egui::Color32::RED, "Not Verified");
                         }

@@ -1,6 +1,8 @@
 mod bid;
 pub(crate) mod signature;
 
+use chrono::{DateTime, TimeZone, Utc};
+
 use bid::Bid;
 use ring::digest::{Context, SHA256};
 use serde::{Deserialize, Serialize};
@@ -72,5 +74,19 @@ impl Auction {
         let mut context = Context::new(&SHA256);
         context.update(self.serialized().as_bytes());
         context.finish().as_ref().to_vec()
+    }
+
+    pub fn finished(&self) -> bool {
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+        current_time > self.ending_time
+    }
+
+    pub fn get_ending_time_as_string(&self) -> String {
+        // Assuming `self.ending_time` is a timestamp (u64) in seconds
+        let datetime = Utc.timestamp(self.ending_time as i64, 0);
+        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
     }
 }
