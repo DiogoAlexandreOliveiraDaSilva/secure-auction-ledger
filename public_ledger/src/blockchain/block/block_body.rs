@@ -1,17 +1,18 @@
 //! Block Body
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockBody {
-    transactions: String
+    transactions: Vec<u8>,
 }
 
 impl BlockBody {
-    pub fn get_transactions(&self) -> String {
-        self.transactions.clone()
+    pub fn get_transactions(&self) -> &Vec<u8> {
+        &self.transactions
     }
-    
-    pub fn new(transactions: String) -> BlockBody {
-        BlockBody {
-            transactions
-        }
+
+    pub fn new(transactions: Vec<u8>) -> BlockBody {
+        BlockBody { transactions }
     }
 }

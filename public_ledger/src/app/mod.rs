@@ -1,11 +1,16 @@
 use crate::auction;
 // main.rs
+use crate::blockchain;
+use crate::blockchain::block::Block;
+use crate::blockchain::chain::Chain;
 use crate::kademlia;
 use crate::kademlia::find_value_dht;
 use crate::kademlia::store_value_dht;
-use crate::routing_table;
+use crate::kademlia::string_to_hash_key;
+use crate::routing_table::{self, RoutingTable};
 use eframe::{App, Frame, egui};
 use screens::auction_screen::AuctionScreenEvent;
+use screens::block_screen::BlockScreen;
 use screens::join_screen::JoinScreen;
 use screens::menu_screen::MenuScreen;
 use screens::menu_screen::MenuScreenEvent;
@@ -36,9 +41,11 @@ pub struct AuctionApp {
     menu_screen: MenuScreen,
     auction_screen: AuctionScreen,
     create_screen: CreateScreen,
+    block_screen: BlockScreen,
     result_string: Arc<Mutex<String>>,
     latest_auction: Arc<Mutex<Auction>>,
     auction_list: Arc<Mutex<Vec<Auction>>>,
+    blockchain: Arc<Mutex<blockchain::chain::Chain>>,
 }
 
 impl AuctionApp {
@@ -52,9 +59,11 @@ impl AuctionApp {
             menu_screen: MenuScreen::default(),
             auction_screen: AuctionScreen::default(),
             create_screen: CreateScreen::default(),
+            block_screen: BlockScreen::default(),
             result_string: Arc::new(Mutex::new("".to_string())),
             latest_auction: Arc::new(Mutex::new(Auction::default())),
             auction_list: Arc::new(Mutex::new(Vec::new())),
+            blockchain: Arc::new(Mutex::new(blockchain::chain::Chain::new())),
         }
     }
 
@@ -118,6 +127,55 @@ impl App for AuctionApp {
                                 self.state = AppState::Join;
                             }
                             SelectionScreenEvent::Create => {
+                                let blockchain = self.blockchain.clone();
+                                let routing_table = self.routing_table.clone().unwrap();
+
+                                tokio::spawn(async move {
+                                    // Add Genesis Block
+                                    let genesis_block = blockchain::block::Block::genesis();
+
+                                    {
+                                        let mut blockchain = blockchain.lock().await;
+                                        blockchain.add_block(genesis_block.clone());
+                                    }
+
+                                    let clone_genesis_block = genesis_block.clone();
+
+                                    // Store Genesis Block under its truncated hash
+                                    let truncated_hash = &genesis_block.get_hash()[0..20];
+                                    let block_dht_key =
+                                        kademlia::string_to_hash_key(&hex::encode(truncated_hash));
+
+                                    let genesis_serialized =
+                                        genesis_block.serialized().as_bytes().to_vec();
+
+                                    let routing_table_clone = routing_table.clone();
+                                    store_value_dht(
+                                        &routing_table_clone,
+                                        block_dht_key,
+                                        genesis_serialized,
+                                    )
+                                    .await;
+                                    println!(
+                                        "Genesis block stored under key {:?}",
+                                        hex::encode(truncated_hash)
+                                    );
+
+                                    // Store Latest Block pointer
+                                    let latest_block_key =
+                                        kademlia::string_to_hash_key("latest_block");
+
+                                    let blockchain = blockchain.lock().await;
+
+                                    store_value_dht(
+                                        &routing_table,
+                                        latest_block_key,
+                                        clone_genesis_block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                    println!("Latest block updated");
+                                });
+
                                 self.update_menu_screen_info();
                                 self.state = AppState::Menu;
                             }
@@ -198,12 +256,19 @@ impl App for AuctionApp {
                             MenuScreenEvent::Auction => {
                                 self.state = AppState::Auction;
                             }
+                            MenuScreenEvent::Block => {
+                                self.state = AppState::Block;
+                            }
                         }
                     }
                 }
                 AppState::Auction => {
                     let auction_list = self.auction_list.try_lock().unwrap(); // Lock to read the auction list
                     self.auction_screen.refresh_auctions(auction_list.clone());
+
+                    let chain = self.blockchain.try_lock().unwrap().clone();
+                    self.auction_screen.set_chain(chain);
+
                     if let Some(event) = self.auction_screen.ui(ui) {
                         match event {
                             AuctionScreenEvent::Create => {
@@ -239,7 +304,7 @@ impl App for AuctionApp {
                                     }
                                 });
 
-                                // Get all auctions
+                                // Get all auctions and verify
                                 let routing_table = self.routing_table.clone().unwrap();
                                 let auction_list = self.auction_list.clone();
                                 tokio::spawn({
@@ -267,6 +332,22 @@ impl App for AuctionApp {
                                         }
                                         let mut auction_list = auction_list.lock().await; // Lock to update the result string
                                         *auction_list = auctions;
+                                    }
+                                });
+
+                                // Get Chain
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
+                                let routing_table_clone = routing_table.clone();
+                                tokio::spawn(async move {
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table_clone).await
+                                    {
+                                        let mut blockchain = blockchain.lock().await;
+                                        *blockchain = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain");
                                     }
                                 });
                             }
@@ -328,6 +409,8 @@ impl App for AuctionApp {
                                     duration_hours,
                                 );
 
+                                let auction_hash = auction.get_hash();
+
                                 // Store Auction
                                 let routing_table = self.routing_table.clone().unwrap();
                                 let routing_table_clone = routing_table.clone();
@@ -357,7 +440,182 @@ impl App for AuctionApp {
                                     )
                                     .await;
                                 });
+
+                                // Create Auction Signature
+                                let auction_signature = auction::signature::AuctionSignature::new(
+                                    auction_id.to_string(),
+                                    auction_hash,
+                                );
+
+                                // Create Block with Auction Signature as transaction
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
+                                let routing_table_clone = routing_table.clone();
+                                let auction_signature_clone = auction_signature.clone();
+                                tokio::spawn(async move {
+                                    //Fetch the latest chain
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table_clone).await
+                                    {
+                                        let mut blockchain_lock = blockchain.lock().await;
+                                        *blockchain_lock = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain, aborting mine");
+                                        return;
+                                    }
+
+                                    //Prepare the new block
+                                    let mut blockchain_lock = blockchain.lock().await;
+                                    let last_block_hash =
+                                        blockchain_lock.get_first_block().get_hash();
+
+                                    let header = blockchain::block::block_header::BlockHeader::new(
+                                        last_block_hash.into(),
+                                    );
+                                    let body = blockchain::block::block_body::BlockBody::new(
+                                        auction_signature_clone.serialized_to_bytes().unwrap(),
+                                    );
+                                    let mut block = blockchain::block::Block::new(header, body);
+
+                                    // Mine the block
+                                    block.mine();
+
+                                    drop(blockchain_lock); // Release lock before DHT operations
+
+                                    // Store the block in the DHT under its truncated hash
+                                    let truncated_hash = &block.get_hash()[0..20]; // First 20 bytes
+                                    let block_dht_key =
+                                        kademlia::string_to_hash_key(&hex::encode(truncated_hash));
+
+                                    store_value_dht(
+                                        &routing_table,
+                                        block_dht_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+
+                                    println!(
+                                        "Block stored under key {:?}",
+                                        hex::encode(truncated_hash)
+                                    );
+
+                                    // Update 'latest_block' pointer in DHT
+                                    let latest_block_key =
+                                        kademlia::string_to_hash_key("latest_block");
+
+                                    store_value_dht(
+                                        &routing_table,
+                                        latest_block_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+
+                                    println!("Latest block updated");
+                                });
+
+                                // Change state to Auction
                                 self.state = AppState::Auction;
+                            }
+                        }
+                    }
+                }
+                AppState::Block => {
+                    if let Some(event) = self.block_screen.ui(ui) {
+                        match event {
+                            screens::block_screen::BlockScreenEvent::Back => {
+                                self.state = AppState::Menu;
+                            }
+                            screens::block_screen::BlockScreenEvent::GetChain => {
+                                let chain = tokio::task::block_in_place(|| {
+                                    let rt = tokio::runtime::Handle::current();
+                                    rt.block_on(self.blockchain.lock()).clone()
+                                });
+                                self.block_screen.refresh_chain(chain);
+                                println!("Getting chain");
+                                let current_chain = blockchain::chain::Chain::new();
+
+                                // Fetch the full chain
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let routing_table_clone = routing_table.clone();
+                                let blockchain_clone = self.blockchain.clone();
+                                tokio::spawn(async move {
+                                    if let Some(chain) =
+                                        fetch_full_chain(&routing_table_clone).await
+                                    {
+                                        let mut blockchain = blockchain_clone.lock().await;
+                                        *blockchain = chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain");
+                                    }
+                                });
+                            }
+                            screens::block_screen::BlockScreenEvent::MineBlock { transaction } => {
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
+
+                                tokio::spawn(async move {
+                                    //Fetch the latest chain
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table).await
+                                    {
+                                        let mut blockchain_lock = blockchain.lock().await;
+                                        *blockchain_lock = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain, aborting mine");
+                                        return;
+                                    }
+
+                                    //Prepare the new block
+                                    let mut blockchain_lock = blockchain.lock().await;
+                                    let last_block_hash =
+                                        blockchain_lock.get_first_block().get_hash();
+
+                                    let header = blockchain::block::block_header::BlockHeader::new(
+                                        last_block_hash.into(),
+                                    );
+                                    let body = blockchain::block::block_body::BlockBody::new(
+                                        transaction.as_bytes().to_vec(),
+                                    );
+                                    let mut block = blockchain::block::Block::new(header, body);
+
+                                    // Mine the block
+                                    block.mine();
+
+                                    drop(blockchain_lock); // Release lock before DHT operations
+
+                                    // Store the block in the DHT under its truncated hash
+                                    let truncated_hash = &block.get_hash()[0..20]; // First 20 bytes
+                                    let block_dht_key =
+                                        kademlia::string_to_hash_key(&hex::encode(truncated_hash));
+
+                                    store_value_dht(
+                                        &routing_table,
+                                        block_dht_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+
+                                    println!(
+                                        "Block stored under key {:?}",
+                                        hex::encode(truncated_hash)
+                                    );
+
+                                    // Update 'latest_block' pointer in DHT
+                                    let latest_block_key =
+                                        kademlia::string_to_hash_key("latest_block");
+
+                                    store_value_dht(
+                                        &routing_table,
+                                        latest_block_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+
+                                    println!("Latest block updated");
+                                });
                             }
                         }
                     }
@@ -365,4 +623,43 @@ impl App for AuctionApp {
             }
         });
     }
+}
+
+pub async fn fetch_full_chain(routing_table: &RwLock<RoutingTable>) -> Option<Chain> {
+    let mut chain = Chain::new();
+    let mut current_hash = string_to_hash_key("latest_block");
+
+    loop {
+        // Fetch the block from DHT
+        let value = find_value_dht(routing_table, current_hash).await;
+
+        match value {
+            Some(bytes) => {
+                let block_str = std::str::from_utf8(&bytes).ok()?;
+                let block = Block::deserialized(block_str);
+
+                // Add block to the chain
+                chain.add_block(block.clone());
+
+                // If we hit the genesis block, we stop
+                if block.header.get_parent_hash() == vec![0; 64] {
+                    println!("Genesis block reached");
+                    break;
+                }
+
+                // Move to the previous block
+                current_hash = {
+                    let mut hash = block.header.get_parent_hash();
+                    hash.truncate(20); // Truncate to 20 bytes
+                    string_to_hash_key(&hex::encode(hash))
+                };
+            }
+            None => {
+                println!("Block not found for hash {:?}", hex::encode(current_hash));
+                return None; // Early exit if something is broken
+            }
+        }
+    }
+
+    Some(chain)
 }

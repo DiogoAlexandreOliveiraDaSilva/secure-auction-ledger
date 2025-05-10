@@ -367,6 +367,15 @@ pub async fn find_value_dht(
     routing_table: &RwLock<routing_table::RoutingTable>,
     key: [u8; 20],
 ) -> Option<Vec<u8>> {
+    // Check own storage first
+    {
+        let routing_table = routing_table.read().await;
+        if let Some(value) = routing_table.get(key) {
+            return Some(value.clone());
+        }
+    }
+
+    // Search in kademlia
     let key = Arc::new(key);
     let curr_node = Arc::new({
         let rt = routing_table.read().await;
