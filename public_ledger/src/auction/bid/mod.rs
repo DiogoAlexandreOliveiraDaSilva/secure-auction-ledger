@@ -12,6 +12,19 @@ pub struct Bid {
 }
 
 impl Bid {
+    pub fn default() -> Self {
+        Bid {
+            id: 0,
+            auction_id: 0,
+            bidder_id: Vec::new(),
+            amount: 0.0,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_secs(),
+        }
+    }
+
     pub fn new(id: u32, auction_id: u32, bidder_id: Vec<u8>, amount: f64) -> Self {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)

@@ -1,7 +1,8 @@
 pub(crate) mod bid;
 pub(crate) mod signature;
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, TimeZone};
+use chrono_tz::{Europe, Tz};
 
 use bid::Bid;
 use ring::digest::{Context, SHA256};
@@ -86,7 +87,10 @@ impl Auction {
 
     pub fn get_ending_time_as_string(&self) -> String {
         // Assuming `self.ending_time` is a timestamp (u64) in seconds
-        let datetime = Utc.timestamp(self.ending_time as i64, 0);
+        let datetime = Europe::Lisbon
+            .timestamp_opt(self.ending_time as i64, 0)
+            .single()
+            .expect("Invalid timestamp");
         datetime.format("%Y-%m-%d %H:%M:%S").to_string()
     }
 }

@@ -53,3 +53,24 @@ impl AuctionSignature {
         verified_auctions
     }
 }
+
+// Bid Signature
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct BidSignature {
+    pub bid_id: String,
+    pub bid_hash: Vec<u8>,
+}
+
+impl BidSignature {
+    pub fn new(bid_id: String, bid_hash: Vec<u8>) -> Self {
+        BidSignature { bid_id, bid_hash }
+    }
+
+    pub fn deserialized_from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+
+    pub fn serialized_to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+}
