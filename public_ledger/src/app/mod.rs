@@ -635,11 +635,39 @@ impl App for AuctionApp {
                                 self.state = AppState::Auction;
                             }
                             screens::bid_screen::BidScreenEvent::SubmitBid { amount } => {
-                                println!(
-                                    "Auction ID: {}",
-                                    self.bid_screen.get_auction().unwrap().serialized()
+                                let curr_auction: Auction =
+                                    self.bid_screen.get_auction().unwrap().clone();
+
+                                // Create Bid
+                                let bid = auction::bid::Bid::new(
+                                    0,
+                                    curr_auction.id,
+                                    self.menu_screen.get_node_id(),
+                                    amount as f64,
                                 );
-                                println!("Bid Amount: {}", amount);
+
+                                // Store Bid
+
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let routing_table_clone = routing_table.clone();
+                                // HASH of format "auction:<auction_id>:bid:<bid_id>", kinda goofy IK but trust me
+                                let hash = kademlia::string_to_hash_key(
+                                    &("auction:".to_string()
+                                        + &curr_auction.id.to_string()
+                                        + ":bid:"
+                                        + &bid.id.to_string()),
+                                );
+
+                                let bid_clone = bid.clone();
+                                tokio::spawn(async move {
+                                    store_value_dht(
+                                        &routing_table_clone,
+                                        hash,
+                                        bid_clone.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                });
+                                println!("Bid stored under key {:?}", hex::encode(hash));
                             }
                         }
                     }

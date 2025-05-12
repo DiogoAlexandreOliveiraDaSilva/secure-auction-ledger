@@ -4,6 +4,7 @@ use egui::Ui;
 pub struct BidScreen {
     curr_auction: Option<crate::auction::Auction>,
     bid_amount: String,
+    status: String,
 }
 
 pub enum BidScreenEvent {
@@ -43,11 +44,18 @@ impl BidScreen {
                     ui.text_edit_singleline(&mut self.bid_amount);
                     if ui.button("Submit Bid").clicked() {
                         if let Ok(amount) = self.bid_amount.parse::<u64>() {
-                            result = Some(BidScreenEvent::SubmitBid { amount });
+                            if amount > self.curr_auction.as_ref().unwrap().starting_price as u64 {
+                                self.status = "".to_string();
+                                result = Some(BidScreenEvent::SubmitBid { amount });
+                            } else {
+                                self.status =
+                                    "Bid amount must be greater than starting price.".to_string();
+                            }
                         } else {
-                            ui.label("Invalid amount. Please enter a valid number.");
+                            self.status = "Invalid bid amount.".to_string();
                         }
                     }
+                    ui.label(&self.status);
                 });
             });
 

@@ -1,4 +1,4 @@
-mod bid;
+pub(crate) mod bid;
 pub(crate) mod signature;
 
 use chrono::{DateTime, TimeZone, Utc};

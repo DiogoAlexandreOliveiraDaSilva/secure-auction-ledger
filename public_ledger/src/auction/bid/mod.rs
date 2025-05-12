@@ -1,10 +1,35 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bid {
     pub id: u32,
     pub auction_id: u32,
-    pub bidder_id: u32,
+    pub bidder_id: Vec<u8>,
     pub amount: f64,
     pub timestamp: u64,
+}
+
+impl Bid {
+    pub fn new(id: u32, auction_id: u32, bidder_id: Vec<u8>, amount: f64) -> Self {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+        Bid {
+            id,
+            auction_id,
+            bidder_id,
+            amount,
+            timestamp,
+        }
+    }
+
+    pub fn serialized(&self) -> String {
+        serde_json::to_string(self).unwrap()
+    }
+    pub fn deserialized(serialized: &str) -> Self {
+        serde_json::from_str(serialized).unwrap()
+    }
 }
