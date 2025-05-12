@@ -112,4 +112,8 @@ impl MenuScreen {
     pub fn set_search_value(&mut self, value: String) {
         self.search_value = value;
     }
+
+    pub fn get_node_id(&self) -> Vec<u8> {
+        self.node_id.clone()
+    }
 }

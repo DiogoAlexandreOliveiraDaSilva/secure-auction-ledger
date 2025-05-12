@@ -13,7 +13,7 @@ pub enum AuctionScreenEvent {
     Create,
     Back,
     GetAuctions,
-    BidMenu { auction_id: u32 },
+    BidMenu { auction: Auction },
 }
 
 impl AuctionScreen {
@@ -58,12 +58,17 @@ impl AuctionScreen {
                             // Check i finished
                             if auction.finished() {
                                 ui.colored_label(egui::Color32::RED, "Finished");
+                                if ui.button("Show").clicked() {
+                                    result = Some(AuctionScreenEvent::BidMenu {
+                                        auction: auction.clone(),
+                                    });
+                                }
                             } else {
                                 ui.colored_label(egui::Color32::GREEN, "Ongoing");
                                 // Bid Button
                                 if ui.button("Bid").clicked() {
                                     result = Some(AuctionScreenEvent::BidMenu {
-                                        auction_id: auction.id,
+                                        auction: auction.clone(),
                                     });
                                 }
                             }

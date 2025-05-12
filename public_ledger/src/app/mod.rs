@@ -48,6 +48,8 @@ pub struct AuctionApp {
     latest_auction: Arc<Mutex<Auction>>,
     auction_list: Arc<Mutex<Vec<Auction>>>,
     blockchain: Arc<Mutex<blockchain::chain::Chain>>,
+    latest_bid: Arc<Mutex<auction::bid::Bid>>,
+    bid_list: Arc<Mutex<Vec<auction::bid::Bid>>>,
 }
 
 impl AuctionApp {
@@ -67,6 +69,8 @@ impl AuctionApp {
             latest_auction: Arc::new(Mutex::new(Auction::default())),
             auction_list: Arc::new(Mutex::new(Vec::new())),
             blockchain: Arc::new(Mutex::new(blockchain::chain::Chain::new())),
+            latest_bid: Arc::new(Mutex::new(auction::bid::Bid::default())),
+            bid_list: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -354,8 +358,9 @@ impl App for AuctionApp {
                                     }
                                 });
                             }
-                            AuctionScreenEvent::BidMenu { auction_id } => {
-                                println!("Bid Menu With ID: {}", auction_id);
+                            AuctionScreenEvent::BidMenu { auction } => {
+                                // Set the auction in the bid screen
+                                self.bid_screen.set_auction(auction.clone());
                                 self.state = AppState::Bid;
                             }
                         }
@@ -413,7 +418,7 @@ impl App for AuctionApp {
                                     auction_id,
                                     item_name,
                                     starting_price,
-                                    duration_hours + 1,
+                                    duration_hours,
                                 );
 
                                 let auction_hash = auction.get_hash();
@@ -628,10 +633,217 @@ impl App for AuctionApp {
                     }
                 }
                 AppState::Bid => {
+                    let chain = self.blockchain.try_lock().unwrap().clone();
+                    self.bid_screen.set_chain(chain);
+
                     if let Some(event) = self.bid_screen.ui(ui) {
                         match event {
                             screens::bid_screen::BidScreenEvent::Back => {
+                                self.bid_screen.set_bids(Vec::new());
                                 self.state = AppState::Auction;
+                            }
+                            screens::bid_screen::BidScreenEvent::SubmitBid { amount } => {
+                                let curr_auction = self.bid_screen.get_auction().unwrap().clone();
+                                let node_id = self.menu_screen.get_node_id();
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
+                                let latest_bid_arc = self.latest_bid.clone();
+
+                                tokio::spawn(async move {
+                                    // Fetch latest bid from DHT
+                                    let latest_hash = kademlia::string_to_hash_key(&format!(
+                                        "auction:{}:bid:latest_bid",
+                                        curr_auction.id
+                                    ));
+                                    let fetched_bid =
+                                        find_value_dht(&routing_table, latest_hash.clone()).await;
+
+                                    let latest_bid = match fetched_bid {
+                                        Some(bytes) => auction::bid::Bid::deserialized(
+                                            std::str::from_utf8(&bytes).unwrap(),
+                                        ),
+                                        None => {
+                                            println!("No latest bid found. Starting from default.");
+                                            let mut b = auction::bid::Bid::default();
+                                            b.auction_id = curr_auction.id;
+                                            b
+                                        }
+                                    };
+
+                                    // Create new bid
+                                    let new_bid = auction::bid::Bid::new(
+                                        latest_bid.id + 1,
+                                        curr_auction.id,
+                                        node_id,
+                                        amount as f64,
+                                    );
+
+                                    // Store new bid in DHT
+                                    let bid_hash = kademlia::string_to_hash_key(&format!(
+                                        "auction:{}:bid:{}",
+                                        curr_auction.id, new_bid.id
+                                    ));
+                                    store_value_dht(
+                                        &routing_table,
+                                        bid_hash.clone(),
+                                        new_bid.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                    println!("Bid stored under key {:?}", hex::encode(bid_hash));
+
+                                    // Update latest bid pointer
+                                    store_value_dht(
+                                        &routing_table,
+                                        latest_hash,
+                                        new_bid.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                    println!("Latest bid pointer updated");
+
+                                    // Update local state
+                                    let mut latest_bid_lock = latest_bid_arc.lock().await;
+                                    *latest_bid_lock = new_bid.clone();
+
+                                    // Create Bid Signature
+                                    let bid_signature = auction::signature::BidSignature::new(
+                                        new_bid.id.to_string(),
+                                        new_bid.get_hash(),
+                                    );
+
+                                    // Fetch blockchain
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table).await
+                                    {
+                                        let mut blockchain_lock = blockchain.lock().await;
+                                        *blockchain_lock = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain, aborting mine");
+                                        return;
+                                    }
+
+                                    // Prepare and mine new block
+                                    let mut blockchain_lock = blockchain.lock().await;
+                                    let last_block_hash =
+                                        blockchain_lock.get_first_block().get_hash();
+                                    let header = blockchain::block::block_header::BlockHeader::new(
+                                        last_block_hash.into(),
+                                    );
+                                    let body = blockchain::block::block_body::BlockBody::new(
+                                        bid_signature.serialized_to_bytes().unwrap(),
+                                    );
+                                    let mut block = blockchain::block::Block::new(header, body);
+
+                                    block.mine();
+
+                                    drop(blockchain_lock); // Release lock before storing in DHT
+
+                                    // Store block in DHT
+                                    let truncated_hash = &block.get_hash()[0..20];
+                                    let block_dht_key =
+                                        kademlia::string_to_hash_key(&hex::encode(truncated_hash));
+                                    store_value_dht(
+                                        &routing_table,
+                                        block_dht_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                    println!(
+                                        "Block stored under key {:?}",
+                                        hex::encode(truncated_hash)
+                                    );
+
+                                    // Update 'latest_block' pointer
+                                    let latest_block_key =
+                                        kademlia::string_to_hash_key("latest_block");
+                                    store_value_dht(
+                                        &routing_table,
+                                        latest_block_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                    println!("Latest block updated");
+                                });
+                            }
+                            screens::bid_screen::BidScreenEvent::GetBids => {
+                                let curr_auction: Auction =
+                                    self.bid_screen.get_auction().unwrap().clone();
+                                let auction_id = curr_auction.id;
+
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let latest_bid = self.latest_bid.clone();
+                                let bid_list = self.bid_list.clone();
+
+                                tokio::spawn(async move {
+                                    // Fetch the latest bid
+                                    let hash = kademlia::string_to_hash_key(&format!(
+                                        "auction:{}:bid:latest_bid",
+                                        auction_id
+                                    ));
+
+                                    let value = find_value_dht(&routing_table, hash).await;
+                                    let mut latest_bid_guard = latest_bid.lock().await;
+
+                                    match value {
+                                        Some(bytes) => {
+                                            *latest_bid_guard = auction::bid::Bid::deserialized(
+                                                from_utf8(&bytes).unwrap(),
+                                            );
+                                            println!("Latest bid found: {:?}", *latest_bid_guard);
+                                        }
+                                        None => {
+                                            println!("Latest bid not found");
+                                            *latest_bid_guard = auction::bid::Bid::default();
+                                            latest_bid_guard.auction_id = auction_id;
+                                        }
+                                    }
+
+                                    let latest_bid_id = latest_bid_guard.id;
+                                    drop(latest_bid_guard); // Explicitly drop the lock before reacquiring
+
+                                    // Now fetch all previous bids
+                                    let mut bids = Vec::new();
+                                    for i in 0..=latest_bid_id {
+                                        let bid_hash = kademlia::string_to_hash_key(&format!(
+                                            "auction:{}:bid:{}",
+                                            auction_id, i
+                                        ));
+
+                                        if let Some(bytes) =
+                                            find_value_dht(&routing_table, bid_hash).await
+                                        {
+                                            let bid = auction::bid::Bid::deserialized(
+                                                from_utf8(&bytes).unwrap(),
+                                            );
+                                            bids.push(bid);
+                                        } else {
+                                            println!("Bid {} not found", i);
+                                        }
+                                    }
+
+                                    let mut bid_list_guard = bid_list.lock().await;
+                                    *bid_list_guard = bids;
+                                });
+
+                                // Get Chain
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
+                                let routing_table_clone = routing_table.clone();
+                                tokio::spawn(async move {
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table_clone).await
+                                    {
+                                        let mut blockchain = blockchain.lock().await;
+                                        *blockchain = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain");
+                                    }
+                                });
+
+                                // Refresh the bid screen with bids
+                                let bid_list = self.bid_list.try_lock().unwrap(); // Lock to read the auction list
+                                self.bid_screen.set_bids(bid_list.clone());
                             }
                         }
                     }
