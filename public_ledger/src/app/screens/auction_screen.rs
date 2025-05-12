@@ -58,6 +58,11 @@ impl AuctionScreen {
                             // Check i finished
                             if auction.finished() {
                                 ui.colored_label(egui::Color32::RED, "Finished");
+                                if ui.button("Bid").clicked() {
+                                    result = Some(AuctionScreenEvent::BidMenu {
+                                        auction: auction.clone(),
+                                    });
+                                }
                             } else {
                                 ui.colored_label(egui::Color32::GREEN, "Ongoing");
                                 // Bid Button

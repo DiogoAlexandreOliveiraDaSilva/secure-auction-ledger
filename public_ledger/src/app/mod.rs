@@ -633,6 +633,9 @@ impl App for AuctionApp {
                     }
                 }
                 AppState::Bid => {
+                    let chain = self.blockchain.try_lock().unwrap().clone();
+                    self.bid_screen.set_chain(chain);
+
                     if let Some(event) = self.bid_screen.ui(ui) {
                         match event {
                             screens::bid_screen::BidScreenEvent::Back => {
@@ -643,6 +646,7 @@ impl App for AuctionApp {
                                 let curr_auction = self.bid_screen.get_auction().unwrap().clone();
                                 let node_id = self.menu_screen.get_node_id();
                                 let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
                                 let latest_bid_arc = self.latest_bid.clone();
 
                                 tokio::spawn(async move {
@@ -674,7 +678,7 @@ impl App for AuctionApp {
                                         amount as f64,
                                     );
 
-                                    // Store new bid under  hash
+                                    // Store new bid in DHT
                                     let bid_hash = kademlia::string_to_hash_key(&format!(
                                         "auction:{}:bid:{}",
                                         curr_auction.id, new_bid.id
@@ -698,7 +702,67 @@ impl App for AuctionApp {
 
                                     // Update local state
                                     let mut latest_bid_lock = latest_bid_arc.lock().await;
-                                    *latest_bid_lock = new_bid;
+                                    *latest_bid_lock = new_bid.clone();
+
+                                    // Create Bid Signature
+                                    let bid_signature = auction::signature::BidSignature::new(
+                                        new_bid.id.to_string(),
+                                        new_bid.get_hash(),
+                                    );
+
+                                    // Fetch blockchain
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table).await
+                                    {
+                                        let mut blockchain_lock = blockchain.lock().await;
+                                        *blockchain_lock = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain, aborting mine");
+                                        return;
+                                    }
+
+                                    // Prepare and mine new block
+                                    let mut blockchain_lock = blockchain.lock().await;
+                                    let last_block_hash =
+                                        blockchain_lock.get_first_block().get_hash();
+                                    let header = blockchain::block::block_header::BlockHeader::new(
+                                        last_block_hash.into(),
+                                    );
+                                    let body = blockchain::block::block_body::BlockBody::new(
+                                        bid_signature.serialized_to_bytes().unwrap(),
+                                    );
+                                    let mut block = blockchain::block::Block::new(header, body);
+
+                                    block.mine();
+
+                                    drop(blockchain_lock); // Release lock before storing in DHT
+
+                                    // Store block in DHT
+                                    let truncated_hash = &block.get_hash()[0..20];
+                                    let block_dht_key =
+                                        kademlia::string_to_hash_key(&hex::encode(truncated_hash));
+                                    store_value_dht(
+                                        &routing_table,
+                                        block_dht_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                    println!(
+                                        "Block stored under key {:?}",
+                                        hex::encode(truncated_hash)
+                                    );
+
+                                    // Update 'latest_block' pointer
+                                    let latest_block_key =
+                                        kademlia::string_to_hash_key("latest_block");
+                                    store_value_dht(
+                                        &routing_table,
+                                        latest_block_key,
+                                        block.serialized().as_bytes().to_vec(),
+                                    )
+                                    .await;
+                                    println!("Latest block updated");
                                 });
                             }
                             screens::bid_screen::BidScreenEvent::GetBids => {
@@ -759,6 +823,22 @@ impl App for AuctionApp {
 
                                     let mut bid_list_guard = bid_list.lock().await;
                                     *bid_list_guard = bids;
+                                });
+
+                                // Get Chain
+                                let routing_table = self.routing_table.clone().unwrap();
+                                let blockchain = self.blockchain.clone();
+                                let routing_table_clone = routing_table.clone();
+                                tokio::spawn(async move {
+                                    if let Some(fetched_chain) =
+                                        fetch_full_chain(&routing_table_clone).await
+                                    {
+                                        let mut blockchain = blockchain.lock().await;
+                                        *blockchain = fetched_chain;
+                                        println!("Chain fetched successfully");
+                                    } else {
+                                        println!("Failed to fetch chain");
+                                    }
                                 });
 
                                 // Refresh the bid screen with bids

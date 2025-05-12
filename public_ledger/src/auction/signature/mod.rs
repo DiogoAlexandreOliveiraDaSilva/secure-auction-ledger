@@ -1,7 +1,7 @@
 use crate::blockchain::chain::Chain;
 use serde::{Deserialize, Serialize};
 
-use super::Auction;
+use super::{Auction, bid::Bid};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AuctionSignature {
@@ -72,5 +72,63 @@ impl BidSignature {
 
     pub fn serialized_to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
+    }
+
+    pub fn get_signatures(chain: &Chain) -> Vec<BidSignature> {
+        chain
+            .get_blocks()
+            .iter()
+            .filter_map(|block| {
+                BidSignature::deserialized_from_bytes(block.get_transactions()).ok()
+            })
+            .collect()
+    }
+
+    pub fn verify_bids(
+        signatures: Vec<BidSignature>,
+        bids: Vec<Bid>,
+        auction: Auction,
+    ) -> Vec<Bid> {
+        let mut verified_bids: Vec<Bid> = Vec::new();
+
+        // Sort bids by timestamp
+        let mut sorted_bids = bids;
+        sorted_bids.sort_by_key(|b| b.timestamp);
+
+        let mut highest_bid = 0.0; // Track the highest valid bid so far
+
+        for bid in sorted_bids {
+            if bid.timestamp > auction.ending_time {
+                continue; // Skip bids that are after the auction end time
+            }
+
+            // If bid is smaller or equal to the highest valid bid seen so far, invalidate
+            if bid.amount <= highest_bid {
+                continue; // Skip this bid, it's not valid
+            }
+
+            // Check if the bid's signature is valid
+            let mut is_valid = false;
+            for signature in &signatures {
+                if bid.id.to_string() == signature.bid_id && bid.get_hash() == signature.bid_hash {
+                    is_valid = true;
+                    break;
+                }
+            }
+
+            if is_valid {
+                // Add the bid to the valid list and update the highest bid
+                verified_bids.push(bid.clone());
+                highest_bid = bid.amount;
+            }
+        }
+
+        verified_bids
+    }
+
+    pub fn winning_bid(verified_bids: Vec<Bid>) -> Option<Bid> {
+        verified_bids
+            .into_iter()
+            .max_by(|a, b| a.amount.partial_cmp(&b.amount).unwrap())
     }
 }
