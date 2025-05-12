@@ -13,7 +13,7 @@ pub enum AuctionScreenEvent {
     Create,
     Back,
     GetAuctions,
-    BidMenu { auction_id: u32 },
+    BidMenu { auction: Auction },
 }
 
 impl AuctionScreen {
@@ -63,7 +63,7 @@ impl AuctionScreen {
                                 // Bid Button
                                 if ui.button("Bid").clicked() {
                                     result = Some(AuctionScreenEvent::BidMenu {
-                                        auction_id: auction.id,
+                                        auction: auction.clone(),
                                     });
                                 }
                             }

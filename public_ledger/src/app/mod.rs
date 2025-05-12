@@ -354,8 +354,9 @@ impl App for AuctionApp {
                                     }
                                 });
                             }
-                            AuctionScreenEvent::BidMenu { auction_id } => {
-                                println!("Bid Menu With ID: {}", auction_id);
+                            AuctionScreenEvent::BidMenu { auction } => {
+                                // Set the auction in the bid screen
+                                self.bid_screen.set_auction(auction.clone());
                                 self.state = AppState::Bid;
                             }
                         }
@@ -632,6 +633,13 @@ impl App for AuctionApp {
                         match event {
                             screens::bid_screen::BidScreenEvent::Back => {
                                 self.state = AppState::Auction;
+                            }
+                            screens::bid_screen::BidScreenEvent::SubmitBid { amount } => {
+                                println!(
+                                    "Auction ID: {}",
+                                    self.bid_screen.get_auction().unwrap().serialized()
+                                );
+                                println!("Bid Amount: {}", amount);
                             }
                         }
                     }
