@@ -60,6 +60,7 @@ impl Kademlia for MyKademliaService {
         let reply = PingResponse {
             node: Some(routing_table.get_curr_node().to_proto()),
             message: format!("Pong"),
+            nonce: request.get_ref().nonce.clone(),
         };
         Ok(Response::new(reply))
     }
@@ -107,7 +108,10 @@ impl Kademlia for MyKademliaService {
         }
 
         // Response with the closest nodes
-        let reply = FindNodeResponse { nodes };
+        let reply = FindNodeResponse {
+            nodes: nodes,
+            nonce: request.get_ref().nonce.clone(),
+        };
         Ok(Response::new(reply))
     }
 
@@ -152,6 +156,7 @@ impl Kademlia for MyKademliaService {
         // Create a response with the stored message
         let reply = StoreResponse {
             message: "Stored successfully".to_string(),
+            nonce: request.get_ref().nonce.clone(),
         };
         Ok(Response::new(reply))
     }
@@ -177,6 +182,7 @@ impl Kademlia for MyKademliaService {
             let reply = FindValueResponse {
                 value,
                 nodes: vec![],
+                nonce: request.get_ref().nonce.clone(),
             };
             return Ok(Response::new(reply));
         }
@@ -215,6 +221,7 @@ impl Kademlia for MyKademliaService {
         let reply = FindValueResponse {
             value: vec![],
             nodes,
+            nonce: request.get_ref().nonce.clone(),
         };
 
         Ok(Response::new(reply))
@@ -261,6 +268,7 @@ pub async fn join_kademlia_network(
     // Send a ping to the bootstrap node
     let request = tonic::Request::new(PingRequest {
         node: Some(curr_node),
+        nonce: kademlia::routing_table::node_id::generate_node_id().to_vec(),
     });
 
     let response = client.ping(request).await?;
@@ -333,6 +341,7 @@ pub async fn store_value_dht(
             node: Some(curr_node.to_proto()),
             key: key.to_vec(),
             value: value.clone(),
+            nonce: kademlia::routing_table::node_id::generate_node_id().to_vec(),
         });
 
         match client.store(request).await {
@@ -405,6 +414,7 @@ pub async fn find_value_dht(
                     let request = tonic::Request::new(FindValueRequest {
                         key: key.to_vec(),
                         node: Some(curr_node.to_proto()),
+                        nonce: kademlia::routing_table::node_id::generate_node_id().to_vec(),
                     });
 
                     client.find_value(request).await.ok()
@@ -479,6 +489,7 @@ pub async fn refresh_bucket(routing_table: &RwLock<routing_table::RoutingTable>,
                 let request = tonic::Request::new(FindNodeRequest {
                     key: random_id,
                     node: Some(curr_node.to_proto()), // Send the current node info
+                    nonce: kademlia::routing_table::node_id::generate_node_id().to_vec(),
                 });
 
                 // Send the FindNodeRequest and handle the response
