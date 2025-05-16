@@ -2,6 +2,8 @@ use std::result;
 
 use egui::Ui;
 
+use crate::kademlia;
+
 #[derive(Default)]
 pub struct MenuScreen {
     ip: String,
@@ -11,6 +13,7 @@ pub struct MenuScreen {
     value: String,
     search_key: String,
     search_value: String,
+    routing_table: Option<kademlia::routing_table::RoutingTable>,
 }
 
 pub enum MenuScreenEvent {
@@ -18,6 +21,7 @@ pub enum MenuScreenEvent {
     SubmittedSearch { key: String },
     Auction,
     Block,
+    DisplayRoutingTable,
 }
 impl MenuScreen {
     pub fn ui(&mut self, ui: &mut Ui) -> Option<MenuScreenEvent> {
@@ -100,6 +104,28 @@ impl MenuScreen {
             }
         });
 
+        // Button to display the routing table
+        ui.add_space(10.0);
+        ui.group(|ui| {
+            if ui.button("Display Routing Table").clicked() {
+                result = Some(MenuScreenEvent::DisplayRoutingTable);
+            }
+        });
+
+        // Display the routing table if it exists
+        if let Some(routing_table) = &self.routing_table {
+            ui.add_space(10.0);
+            ui.group(|ui| {
+                ui.label("Routing Table:");
+                for (index, bucket) in routing_table.get_k_bucket_map().iter() {
+                    ui.label(format!("Bucket {}: ", index));
+                    for node in bucket.get_nodes() {
+                        ui.label(format!("Node ID: {}", hex::encode(node.get_id())));
+                    }
+                }
+            });
+        }
+
         result
     }
 
@@ -115,5 +141,9 @@ impl MenuScreen {
 
     pub fn get_node_id(&self) -> Vec<u8> {
         self.node_id.clone()
+    }
+
+    pub fn set_routing_table(&mut self, routing_table: kademlia::routing_table::RoutingTable) {
+        self.routing_table = Some(routing_table);
     }
 }

@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
-pub(crate) mod node;
 pub(crate) mod k_bucket;
-pub(crate) mod params;
+pub(crate) mod node;
 pub(crate) mod node_id;
+pub(crate) mod params;
 
 // The routing table is a list of node that joined the network by contacting the bootstrap node in this case curr_node the local node
-pub(crate) struct RoutingTable{
+
+#[derive(Clone)]
+pub(crate) struct RoutingTable {
     // The current node
     curr_node: node::Node,
     // This must be a vector of K-Buckets
@@ -46,10 +48,16 @@ impl RoutingTable {
         // Check if the bucket exists
         if !self.k_bucket_map.contains_key(&(index as u8)) {
             // Create a new bucket
-            self.k_bucket_map.insert(index as u8, k_bucket::K_Bucket::new(params::MAX_BUCKET_SIZE));
+            self.k_bucket_map.insert(
+                index as u8,
+                k_bucket::K_Bucket::new(params::MAX_BUCKET_SIZE),
+            );
         }
         // Add the node to the bucket
-        self.k_bucket_map.get_mut(&(index as u8)).unwrap().add_node(node);
+        self.k_bucket_map
+            .get_mut(&(index as u8))
+            .unwrap()
+            .add_node(node);
     }
 
     // Get the number of nodes in the routing table
@@ -107,5 +115,4 @@ impl RoutingTable {
     pub fn get_k_bucket(&self, index: u8) -> Option<&k_bucket::K_Bucket> {
         self.k_bucket_map.get(&index)
     }
-
 }
