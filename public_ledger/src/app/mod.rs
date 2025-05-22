@@ -83,6 +83,7 @@ impl AuctionApp {
                     node.get_port().to_string(),
                     node.get_id().to_vec(),
                 );
+                self.menu_screen.set_routing_table(rt_read.clone());
             }
         }
     }
@@ -265,6 +266,12 @@ impl App for AuctionApp {
                             }
                             MenuScreenEvent::Block => {
                                 self.state = AppState::Block;
+                            }
+                            MenuScreenEvent::DisplayRoutingTable => {
+                                let routing_table = self.routing_table.clone();
+                                self.menu_screen.set_routing_table(
+                                    routing_table.clone().unwrap().try_read().unwrap().clone(),
+                                );
                             }
                         }
                     }

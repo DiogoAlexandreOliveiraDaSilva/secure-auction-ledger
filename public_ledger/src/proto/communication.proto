@@ -15,11 +15,14 @@ service Kademlia {
 
 message PingRequest {
     Node node = 1; // Node that is pinging
+    bytes nonce = 2; // Nonce to identify the request
 }
 
 message PingResponse {
     Node node = 1; // Node that is being pinged
     string message = 2; // Acknowledgment of the ping
+    bytes nonce = 3; // Nonce to identify the request
+
 }
 
 message StoreRequest {
@@ -28,33 +31,46 @@ message StoreRequest {
     bytes key = 2;
     // The value to store
     bytes value = 3;
+    // Nonce to identify the request
+    bytes nonce = 4;
+    
 }
 
 message StoreResponse {
     // Acknowledgment of the store operation
     string message = 1;
+    // Nonce to identify the request
+    bytes nonce = 2;
 }
 
 message FindNodeRequest {
     Node node = 1; // Node that is making the request
     // The key to find
     bytes key = 2;
+    // Nonce to identify the request
+    bytes nonce = 3;
 }
 
 message FindNodeResponse {
     repeated Node nodes = 1; // List of nodes closest to the key
+    // Nonce to identify the request
+    bytes nonce = 2;
 }
 
 message FindValueRequest {
     Node node = 1; // Node that is making the request
     // The key to find
     bytes key = 2;
+    // Nonce to identify the request
+    bytes nonce = 3;
 }
 
 // If it has value, it means the value is found and returned, if not returns the nodes closest to the key
 message FindValueResponse {
     bytes value = 1; // If value is found
     repeated Node nodes = 2; // Otherwise, return a list of nodes
+    // Nonce to identify the request
+    bytes nonce = 3;
 }
 
 // Node structure
